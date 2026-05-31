@@ -377,7 +377,7 @@ const TAUNTS=[
 'Три ролі, три ключі. Знайди всі 🔑',
 '480GB через NAT Gateway. Майже готово 📦',
 ];
-let gameRunning=false,lastTime=0,stepCD=0;
+let gameRunning=false,lastTime=0,stepCD=0,qTimerPaused=false;
 let currentZone='',zoneAnnTimer=0;
 let gameMode='simulation';
 
@@ -455,7 +455,7 @@ function update(dt){
   if(!gameRunning)return;
 
   // Damage: grows per unresolved compromised node (not constant tick)
-  const inQ=qActive&&gameMode==='training';
+  const inQ=qActive;
   if(!inQ){
     const unresolvedCount=NODES.filter(n=>n.compromised&&!n.resolved).length;
     damage=Math.min(maxDamage,damage+dt*unresolvedCount*0.2); // 0.2%/sec per unresolved node
@@ -464,7 +464,7 @@ function update(dt){
   if(gameMode==='simulation') updateDistraction(dt);
 
   if(qActive){
-    if(gameMode==='simulation'){
+    if(gameMode==='simulation'&&!qTimerPaused){
       qTimer-=dt;
       const tEl=document.getElementById('qtimer');
       if(tEl)tEl.textContent=Math.max(0,Math.ceil(qTimer))+'s';
@@ -833,7 +833,7 @@ function autoFail(){
   // Check if this is the boss decision
   if(finalePhase===3){resolveBoss(2);return}
   qNode.resolved=true;results.push(false);
-  sFail();damage=Math.min(maxDamage,damage+12);atkSpeed=Math.min(6,atkSpeed+.6);
+  sFail();damage=Math.min(maxDamage,damage+8);atkSpeed=Math.min(6,atkSpeed+.4);
   document.querySelectorAll('.qp').forEach((o,i)=>{o.classList.add('dim');if(i===qNode.c)o.classList.add('correct')});
   const fb=document.getElementById('qfb');
   fb.className='qf fl show';fb.textContent='⏱ Час вичерпано. '+qNode.fl;
@@ -843,8 +843,8 @@ function autoFail(){
 }
 
 function showQuestion(node){
-  qActive=true;qTimer=gameMode==='training'?999:20;qNode=node;
-  const timerHtml=gameMode==='training'?'<span style="font-size:.6rem;color:rgba(0,255,136,.4)">🎓 ТРЕНУВАННЯ</span>':'<div id="qtimer" style="font-family:\'Share Tech Mono\',monospace;font-size:1.1rem;color:rgba(255,180,0,.6);min-width:36px;text-align:right">20s</div>';
+  qActive=true;qTimer=gameMode==='training'?999:25;qNode=node;
+  const timerHtml=gameMode==='training'?'<span style="font-size:.6rem;color:rgba(0,255,136,.4)">🎓 ТРЕНУВАННЯ</span>':'<div id="qtimer" style="font-family:\'Share Tech Mono\',monospace;font-size:1.1rem;color:rgba(255,180,0,.6);min-width:36px;text-align:right">25s</div>';
   const m=document.getElementById('qinner');
   m.innerHTML=`
     <div class="qh"><span class="qi">${node.icon}</span><div style="flex:1"><div class="ql">${node.name}</div><div class="qn">${ZONES[node.zone].name}</div></div>${timerHtml}</div>
@@ -862,8 +862,9 @@ function showQuestion(node){
   });
   document.getElementById('qnext').onclick=()=>{document.getElementById('qpanel').classList.remove('open');setTimeout(()=>{qActive=false;distTimer=Math.max(distTimer,6)},300)};
   document.getElementById('qpanel').classList.add('open');
+  qTimerPaused=true;
   const atkEl=document.getElementById('qatk');
-  typewrite(atkEl,node.atk);
+  typewrite(atkEl,node.atk).then(()=>{qTimerPaused=false});
 }
 
 function typewrite(el,text){
@@ -878,9 +879,9 @@ function answerNode(node,ch){
   const ok=ch===node.c;
   node.resolved=true;
   results.push(ok);
-  if(ok){sOk();damage=Math.max(0,damage-4);atkSpeed=Math.max(gameMode==='training'?.5:2,atkSpeed-.2);
+  if(ok){sOk();damage=Math.max(0,damage-6);atkSpeed=Math.max(gameMode==='training'?.5:2,atkSpeed-.2);
     defReply=DEF_OK[Math.floor(Math.random()*DEF_OK.length)];defReplyTimer=2.5;
-  }else{sFail();damage=Math.min(maxDamage,damage+12);atkSpeed=Math.min(6,atkSpeed+(gameMode==='training'?.2:.6));
+  }else{sFail();damage=Math.min(maxDamage,damage+8);atkSpeed=Math.min(6,atkSpeed+(gameMode==='training'?.2:.6));
     defReply=DEF_FAIL[Math.floor(Math.random()*DEF_FAIL.length)];defReplyTimer=2.5;
   }
 
@@ -962,7 +963,7 @@ function showResults(){
   if(gameMode==='training'){
     gradeColor='rgba(0,210,255,.7)';title=ok>=10?'Відмінне розуміння IR':'Є над чим працювати';
   }else{
-    if(damage<20&&ok>=10){grade='S';gradeColor='#00ff88';title='Elite Responder'}
+    if(damage<30&&ok>=10){grade='S';gradeColor='#00ff88';title='Elite Responder'}
     else if(damage<35&&ok>=8){grade='A';gradeColor='#00dd66';title='Senior Analyst'}
     else if(damage<55&&ok>=6){grade='B';gradeColor='#ffaa22';title='SOC Analyst'}
     else if(damage<75&&ok>=4){grade='C';gradeColor='#ff8844';title='Junior Analyst'}
@@ -1098,7 +1099,7 @@ function updateDistraction(dt){
 let tutStep=-1,tutMoved=0;
 
 const TUT_STEPS=[
-  {text:'<div style="text-align:left;line-height:2"><p>🥷 <b>Зловмисник</b> рухається автоматично. Скомпрометовані системи стають <span style="color:rgba(255,34,85,.7)">червоними</span>.</p><p>🕵️ <b>Ви</b> біжите за ним → підходите до червоного вузла → SPACE → обираєте дію.</p><p>📊 <b>Damage</b> росте поки є нерозв\'язані вузли. Правильна: <span style="color:rgba(0,255,136,.7)">−4%</span>. Неправильна: <span style="color:rgba(255,34,85,.7)">+12%</span>.</p><p>⚡ Вас будуть відволікати — CISO, Legal, розробники. 10 секунд на рішення.</p><p style="margin-top:10px">Наприкінці гри ви отримаєте рейтинг залежно від загальної шкоди:</p><p style="text-align:center;margin-top:4px"><span style="color:#00ff88">S</span> Elite — менше 20% · <span style="color:#00dd66">A</span> Senior — до 35% · <span style="color:#ffaa22">B</span> Analyst — до 55% · <span style="color:#ff8844">C</span> Junior — до 75% · <span style="color:#ff2255">F</span> — понад 75%</p></div>',hint:'Натисніть будь-яку клавішу щоб продовжити',trigger:'anykey'},
+  {text:'<div style="text-align:left;line-height:2"><p>🥷 <b>Зловмисник</b> рухається автоматично. Скомпрометовані системи стають <span style="color:rgba(255,34,85,.7)">червоними</span>.</p><p>🕵️ <b>Ви</b> біжите за ним → підходите до червоного вузла → SPACE → обираєте дію.</p><p>📊 <b>Damage</b> росте поки є нерозв\'язані вузли. Правильна: <span style="color:rgba(0,255,136,.7)">−6%</span>. Неправильна: <span style="color:rgba(255,34,85,.7)">+8%</span>.</p><p>⚡ Вас будуть відволікати — CISO, Legal, розробники. 10 секунд на рішення. Damage зупиняється поки ви відповідаєте.</p><p style="margin-top:10px">Наприкінці гри ви отримаєте рейтинг залежно від загальної шкоди:</p><p style="text-align:center;margin-top:4px"><span style="color:#00ff88">S</span> Elite — менше 30% · <span style="color:#00dd66">A</span> Senior — до 35% · <span style="color:#ffaa22">B</span> Analyst — до 55% · <span style="color:#ff8844">C</span> Junior — до 75% · <span style="color:#ff2255">F</span> — понад 75%</p></div>',hint:'Натисніть будь-яку клавішу щоб продовжити',trigger:'anykey'},
   {text:'Це ви — <b>🕵️ incident responder</b>. Спробуйте порухатися по карті.',hint:'WASD або стрілки',trigger:'move'},
   {text:'Бачите <b>червоний вузол</b>? Це скомпрометована система. Підійдіть до нього.',hint:'Рухайтесь до червоного вузла',trigger:'near'},
   {text:'Ви біля вузла. Натисніть <b>SPACE</b> щоб дослідити.',hint:'Натисніть SPACE',trigger:'interact'},
