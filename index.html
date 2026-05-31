@@ -1,0 +1,1196 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>VectorPay — Incident Response</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Chakra+Petch:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#080c14;touch-action:none}
+body{font-family:'Chakra Petch',sans-serif;color:#c8d4e0}
+canvas{display:block;width:100%;height:100%}
+#prompt{position:fixed;left:50%;bottom:18%;transform:translateX(-50%);font-family:'Share Tech Mono',monospace;font-size:1rem;letter-spacing:.12em;text-transform:uppercase;color:rgba(0,210,255,.85);background:rgba(8,14,24,.9);border:1px solid rgba(0,210,255,.3);padding:12px 32px;display:none;z-index:20;animation:pp 1.5s ease-in-out infinite}
+#prompt.show{display:block}
+@keyframes pp{0%,100%{opacity:.75}50%{opacity:1}}
+.hud{position:fixed;z-index:50;pointer-events:none;font-family:'Share Tech Mono',monospace}
+.hud-tl{top:12px;left:16px;font-size:.72rem;letter-spacing:.08em}
+.hud-tr{top:12px;right:16px;font-size:.65rem;letter-spacing:.08em;text-align:right}
+.hud-tr .hl{color:rgba(0,210,255,.5);font-size:.72rem}
+.hud-bl{bottom:12px;left:16px;font-size:.65rem;color:rgba(255,255,255,.2);letter-spacing:.1em}
+#tutOverlay{position:fixed;inset:0;z-index:80;pointer-events:none;display:none;align-items:center;justify-content:center;padding:20px;background:rgba(4,8,16,.5)}
+#tutOverlay.show{display:flex}
+#tutBox{max-width:600px;width:100%;background:rgba(4,10,20,.95);border:2px solid rgba(0,255,136,.3);padding:24px 32px;pointer-events:auto;animation:panelIn .3s ease-out;box-shadow:0 0 40px rgba(0,255,136,.08)}
+#tutBox .tut-text{font-size:1.2rem;line-height:1.8;color:rgba(255,255,255,.65);margin-bottom:10px}
+#tutBox .tut-text b{color:rgba(0,255,136,.85);font-weight:600}
+#tutBox .tut-hint{font-family:'Share Tech Mono',monospace;font-size:.8rem;color:rgba(0,255,136,.5);letter-spacing:.08em;animation:pp 2s ease-in-out infinite}
+#tutorial{position:fixed;inset:0;z-index:150;background:rgba(4,8,16,.88);display:none;align-items:center;justify-content:center;flex-direction:column;gap:48px;text-align:center}
+#tutorial.show{display:flex;animation:fadeIn .5s ease-out}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.tkeys{display:flex;gap:8px;align-items:center}
+.tkey{width:60px;height:60px;border:2px solid rgba(0,210,255,.3);border-radius:10px;display:flex;align-items:center;justify-content:center;font-family:'Share Tech Mono',monospace;font-size:1.3rem;color:rgba(0,210,255,.7);background:rgba(0,210,255,.05);animation:keyPulse 2s ease-in-out infinite}
+.tkey.sp{width:200px;font-size:.95rem;letter-spacing:.12em}
+@keyframes keyPulse{0%,100%{border-color:rgba(0,210,255,.2);background:rgba(0,210,255,.03)}50%{border-color:rgba(0,210,255,.5);background:rgba(0,210,255,.08)}}
+.tlabel{font-family:'Chakra Petch',sans-serif;font-size:1.2rem;color:rgba(255,255,255,.4);margin-top:6px}
+.tskip{font-family:'Share Tech Mono',monospace;font-size:.6rem;color:rgba(255,255,255,.12);letter-spacing:.15em;animation:pp 2s ease-in-out infinite}
+.hud-br{bottom:12px;right:16px;font-size:.5rem;color:rgba(0,200,255,.12);letter-spacing:.18em}
+#modeBtn{position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:55;font-family:'Share Tech Mono',monospace;font-size:.6rem;letter-spacing:.1em;padding:6px 18px;border:1px solid rgba(255,255,255,.06);background:rgba(8,14,24,.6);color:rgba(255,255,255,.2);cursor:pointer;transition:all .3s}
+#modeBtn:hover{border-color:rgba(0,210,255,.3);color:rgba(0,210,255,.5)}
+#modeBtn.training{border-color:rgba(0,255,136,.15);color:rgba(0,255,136,.4)}
+#modeBtn.simulation{border-color:rgba(255,180,0,.15);color:rgba(255,180,0,.4)}
+#dmgBar{position:fixed;top:42px;left:16px;width:180px;height:6px;background:rgba(255,255,255,.05);z-index:50;border-radius:3px}
+#dmgFill{height:100%;width:0%;background:linear-gradient(90deg,#22c55e,#f59e0b,#ef4444);border-radius:3px;transition:width .5s}
+#dmgLabel{position:fixed;top:32px;left:16px;font-family:'Share Tech Mono',monospace;font-size:.5rem;color:rgba(255,255,255,.18);letter-spacing:.12em;z-index:50}
+#zoneAnn{position:fixed;top:40%;left:50%;transform:translate(-50%,-50%);font-family:'Chakra Petch',sans-serif;font-size:clamp(1.4rem,4vw,2.2rem);font-weight:700;color:rgba(0,210,255,.6);letter-spacing:.08em;pointer-events:none;z-index:40;opacity:0;transition:opacity .4s}
+#zoneAnn .za-sub{font-family:'Share Tech Mono',monospace;font-size:.6rem;color:rgba(255,255,255,.15);letter-spacing:.2em;margin-top:4px}
+#zoneAnn.show{opacity:1}
+/* distraction popup */
+#distraction{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);z-index:90;display:none;width:420px;max-width:90vw;background:rgba(12,18,30,.96);border:1px solid rgba(255,200,0,.15);padding:24px;animation:distIn .3s ease-out}
+#distraction.show{display:block}
+@keyframes distIn{from{opacity:0;transform:translate(-50%,-50%) scale(.95)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
+.dist-header{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.dist-icon{font-size:22px}
+.dist-from{font-family:'Share Tech Mono',monospace;font-size:.6rem;color:rgba(255,200,0,.5);letter-spacing:.12em;text-transform:uppercase}
+.dist-msg{font-size:.95rem;line-height:1.7;color:rgba(255,255,255,.5);margin-bottom:16px}
+.dist-opts{display:flex;gap:10px}
+.dist-opt{flex:1;padding:12px 10px;border:1px solid rgba(255,255,255,.06);background:none;cursor:pointer;font-family:'Chakra Petch',sans-serif;font-size:.82rem;line-height:1.4;color:rgba(255,255,255,.4);text-align:center;transition:all .2s}
+.dist-opt:hover{border-color:rgba(0,210,255,.3);color:rgba(255,255,255,.6);background:rgba(0,210,255,.03)}
+.dist-timer{font-family:'Share Tech Mono',monospace;font-size:.55rem;color:rgba(255,200,0,.3);text-align:right;margin-top:8px}
+/* mobile */
+#dpad{position:fixed;bottom:16px;left:16px;z-index:60;width:120px;height:120px;display:none}
+.dp{position:absolute;width:38px;height:38px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06);border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:14px;color:rgba(255,255,255,.2)}
+.dp:active{background:rgba(0,210,255,.1)}
+#dp-u{left:41px;top:0}#dp-d{left:41px;bottom:0}#dp-l{left:0;top:41px}#dp-r{right:0;top:41px}
+#actbtn{position:fixed;bottom:46px;right:24px;z-index:60;width:52px;height:52px;border-radius:50%;background:rgba(0,210,255,.06);border:1px solid rgba(0,210,255,.15);display:none;align-items:center;justify-content:center;font-size:20px;color:rgba(0,210,255,.4)}
+/* question panel */
+#qpanel{position:fixed;inset:0;z-index:100;display:none;align-items:center;justify-content:center;background:rgba(4,8,16,.85);backdrop-filter:blur(12px);padding:16px}
+#qpanel.open{display:flex}
+#qinner{max-width:680px;width:100%;max-height:85vh;overflow-y:auto;background:rgba(10,16,28,.95);border:1px solid rgba(255,255,255,.04);padding:32px 32px 28px;animation:panelIn .3s ease-out}
+@keyframes panelIn{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:scale(1)}}
+.qh{display:flex;align-items:center;gap:12px;margin-bottom:18px}
+.qi{font-size:24px;opacity:.6}
+.ql{font-family:'Share Tech Mono',monospace;font-size:.7rem;color:rgba(0,200,255,.4);letter-spacing:.15em;text-transform:uppercase}
+.qn{font-family:'Share Tech Mono',monospace;font-size:.55rem;color:rgba(255,255,255,.1);letter-spacing:.1em;margin-top:3px}
+.qa{font-size:1.05rem;line-height:1.9;color:rgba(200,212,224,.7);padding:0 0 16px 16px;margin-bottom:16px;border-left:2px solid rgba(255,255,255,.04);min-height:1.5em}
+.qk{font-size:1.15rem;font-weight:600;line-height:1.5;margin-bottom:18px;color:#dce4f0;opacity:0;transform:translateY(5px);transition:all .4s}.qk.show{opacity:1;transform:translateY(0)}
+.qo{display:flex;flex-direction:column;gap:10px}
+.qp{padding:14px 18px;border:1px solid rgba(255,255,255,.04);cursor:pointer;font-size:1.02rem;line-height:1.6;color:rgba(200,212,224,.7);display:flex;gap:14px;align-items:flex-start;transition:all .25s;opacity:0;transform:translateX(-5px)}
+.qp.show{opacity:1;transform:translateX(0)}
+.qp:hover{border-color:rgba(0,210,255,.25);background:rgba(0,210,255,.025);transform:translateX(3px)}
+.qp .mk{font-family:'Share Tech Mono',monospace;font-size:.9rem;font-weight:700;color:rgba(0,210,255,.45);min-width:22px;flex-shrink:0}
+.qp.correct{border-color:rgba(0,255,136,.35);background:rgba(0,255,136,.035)}.qp.correct .mk{color:#00ff88}
+.qp.wrong{border-color:rgba(255,34,85,.35);background:rgba(255,34,85,.025)}.qp.wrong .mk{color:#ff2255}
+.qp.dim{pointer-events:none;opacity:.1;transform:translateX(0)}.qp.dim.correct{opacity:1}.qp.dim.wrong{opacity:.4}
+.qf{margin-top:14px;padding:14px 18px;font-size:1rem;line-height:1.85;opacity:0;max-height:0;overflow:hidden;transition:all .4s}
+.qf.show{opacity:1;max-height:200px}
+.qf.ok{border-left:2px solid rgba(0,255,136,.4);color:rgba(0,255,136,.7);background:rgba(0,255,136,.025)}
+.qf.fl{border-left:2px solid rgba(255,34,85,.4);color:rgba(255,34,85,.6);background:rgba(255,34,85,.025)}
+.qx{margin-top:16px;float:right;font-family:'Share Tech Mono',monospace;font-size:.75rem;letter-spacing:.12em;text-transform:uppercase;color:rgba(0,210,255,.45);background:none;border:1px solid rgba(0,210,255,.15);padding:11px 28px;cursor:pointer;opacity:0;transition:all .3s}.qx.show{opacity:1}.qx:hover{border-color:rgba(0,210,255,.35);color:rgba(0,210,255,.75)}
+/* intro */
+.iov{position:fixed;inset:0;z-index:200;background:rgba(8,14,24,.98);display:flex;align-items:center;justify-content:center;text-align:center;padding:20px;overflow-y:auto}.iov.hide{display:none}
+.iw{max-width:900px;padding:0 32px}.iw h1{font-size:clamp(2.8rem,7vw,4.5rem);font-weight:700;letter-spacing:.06em;color:#00d4ff;margin-bottom:2px}
+.iw .is{font-family:'Share Tech Mono',monospace;font-size:.75rem;color:rgba(0,210,255,.25);letter-spacing:.4em;margin-bottom:32px}
+.iw p{font-size:1.1rem;line-height:2;color:rgba(255,255,255,.4);margin-bottom:12px;text-align:left}.iw p b{color:rgba(255,255,255,.75);font-weight:600}
+.iw .intro-grid{display:grid;grid-template-columns:1fr 1fr;gap:28px;text-align:left;margin-bottom:28px}
+.iw .intro-grid p{margin-bottom:0}
+.iw button{font-family:'Share Tech Mono',monospace;font-size:.8rem;letter-spacing:.2em;text-transform:uppercase;background:none;border:1px solid rgba(0,210,255,.3);color:rgba(0,210,255,.6);padding:16px 56px;cursor:pointer;transition:all .4s;animation:btnGlow 2s ease-in-out infinite}
+.iw button:hover{border-color:rgba(0,210,255,.8);color:#00d4ff;box-shadow:0 0 30px rgba(0,210,255,.15)}
+@keyframes btnGlow{0%,100%{box-shadow:0 0 8px rgba(0,210,255,.05);border-color:rgba(0,210,255,.2)}50%{box-shadow:0 0 20px rgba(0,210,255,.12);border-color:rgba(0,210,255,.45)}}
+@media(max-width:600px){.iw .intro-grid{grid-template-columns:1fr}}
+/* result */
+.rov{position:fixed;inset:0;z-index:200;background:rgba(8,14,24,.97);display:none;align-items:center;justify-content:center;text-align:center;padding:24px;overflow-y:auto}.rov.on{display:flex}
+.rw{max-width:720px;width:100%}.rw h2{font-size:clamp(2rem,5vw,3rem);font-weight:700;margin-bottom:24px}.rw .rd{font-size:1.1rem;line-height:1.9;color:rgba(255,255,255,.3);margin-bottom:32px}
+.rw .rps{display:flex;gap:6px;justify-content:center;margin-bottom:28px;flex-wrap:wrap}.rw .rp{width:28px;height:7px;border-radius:2px}.rp.g{background:rgba(0,255,136,.6)}.rp.r{background:rgba(255,34,85,.5)}
+.rw button{font-family:'Share Tech Mono',monospace;font-size:.8rem;letter-spacing:.15em;background:none;border:1px solid rgba(255,255,255,.1);color:rgba(255,255,255,.25);padding:16px 48px;cursor:pointer;transition:all .3s}
+.rw button:hover{border-color:rgba(0,210,255,.3);color:rgba(0,210,255,.5)}
+@media(max-width:800px){#dpad{display:block}#actbtn{display:flex}}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="prompt">SPACE — дослідити</div>
+<div id="dmgLabel">DAMAGE</div><div id="dmgBar"><div id="dmgFill"></div></div>
+<div id="zoneAnn"><span id="zoneAnnText"></span><div class="za-sub" id="zoneAnnSub"></div></div>
+<div id="distraction"></div>
+<div id="tutOverlay"><div id="tutBox"><div class="tut-text" id="tutText"></div><div class="tut-hint" id="tutHint"></div></div></div>
+<div class="hud hud-tl" id="hudTL"></div>
+<div class="hud hud-tr" id="hudTR"></div>
+<div class="hud hud-bl">WASD — рух &nbsp;·&nbsp; SPACE — дослідити вузол</div>
+<div class="hud hud-br">VECTORPAY IR</div>
+<div id="dpad"><div class="dp" id="dp-u">▲</div><div class="dp" id="dp-d">▼</div><div class="dp" id="dp-l">◀</div><div class="dp" id="dp-r">▶</div></div>
+<div id="actbtn">⚡</div>
+<div id="qpanel"><div id="qinner"></div></div>
+
+<div class="iov" id="iov"><div class="iw">
+  <h1>VectorPay</h1>
+  <div class="is">incident response simulation</div>
+
+  <div class="intro-grid">
+    <div>
+      <p style="font-family:'Share Tech Mono',monospace;font-size:.8rem;color:rgba(255,34,85,.55);letter-spacing:.15em;margin-bottom:8px">СИТУАЦІЯ</p>
+      <p>Фінтех-платформа VectorPay скомпрометована. Зловмисник проник через фішинг <b>12 днів тому</b>.</p>
+      <p>За цей час він отримав доступ до Kubernetes-кластера, створив фальшиві IAM-ролі, скопіював дані з PostgreSQL і підготував staging area в Elasticsearch.</p>
+    </div>
+    <div>
+      <p style="font-family:'Share Tech Mono',monospace;font-size:.8rem;color:rgba(0,210,255,.55);letter-spacing:.15em;margin-bottom:8px">ВАША РОЛЬ</p>
+      <p>SOC-алерт щойно спрацював. Ви — <b>incident responder</b>. На карті ви бачите зловмисника <span style="color:rgba(255,34,85,.8)">●</span> і себе <span style="color:rgba(80,150,255,.8)">●</span>.</p>
+      <p><b>Зловмисник не чекає</b> — він рухається і продовжує компрометацію. Біжіть за червоним слідом, досліджуйте вузли.</p>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:40px;justify-content:center;align-items:flex-start;margin:20px 0 32px">
+    <div style="text-align:center">
+      <div style="display:flex;flex-direction:column;align-items:center;gap:6px">
+        <div style="width:48px;height:48px;border:2px solid rgba(0,210,255,.25);border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:'Share Tech Mono',monospace;font-size:1.1rem;color:rgba(0,210,255,.5)">W</div>
+        <div style="display:flex;gap:6px">
+          <div style="width:48px;height:48px;border:2px solid rgba(0,210,255,.25);border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:'Share Tech Mono',monospace;font-size:1.1rem;color:rgba(0,210,255,.5)">A</div>
+          <div style="width:48px;height:48px;border:2px solid rgba(0,210,255,.25);border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:'Share Tech Mono',monospace;font-size:1.1rem;color:rgba(0,210,255,.5)">S</div>
+          <div style="width:48px;height:48px;border:2px solid rgba(0,210,255,.25);border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:'Share Tech Mono',monospace;font-size:1.1rem;color:rgba(0,210,255,.5)">D</div>
+        </div>
+      </div>
+      <div style="font-size:.75rem;color:rgba(255,255,255,.2);margin-top:8px">Рух</div>
+    </div>
+    <div style="text-align:center;padding-top:22px">
+      <div style="width:140px;height:48px;border:2px solid rgba(0,210,255,.25);border-radius:8px;display:flex;align-items:center;justify-content:center;font-family:'Share Tech Mono',monospace;font-size:.95rem;color:rgba(0,210,255,.5);letter-spacing:.1em">SPACE</div>
+      <div style="font-size:.75rem;color:rgba(255,255,255,.2);margin-top:8px">Дослідити вузол</div>
+    </div>
+  </div>
+  <button onclick="startTutorial()" style="border-color:rgba(0,255,136,.25);color:rgba(0,255,136,.5);margin-right:12px">🎓 Як грати</button>
+  <button onclick="startGame('simulation')">⚡ Почати розслідування</button>
+  <div style="display:flex;gap:24px;justify-content:center;margin-top:14px;font-size:.7rem;color:rgba(255,255,255,.12)">
+    <span>Інтерактивний туторіал</span>
+    <span>Повна симуляція</span>
+  </div>
+</div></div>
+
+<div class="rov" id="rov"><div class="rw">
+  <h2 id="rT"></h2>
+  <div class="rps" id="rPs"></div>
+  <div class="rd" id="rD"></div>
+  <button onclick="location.reload()">Нове розслідування</button>
+</div></div>
+
+<script>
+// ═══ AUDIO ═══
+const AC=window.AudioContext||window.webkitAudioContext;let ax;
+function ea(){if(!ax)ax=new AC()}
+function tn(f,d,tp='sine',v=.03){ea();const o=ax.createOscillator(),g=ax.createGain();o.type=tp;o.frequency.value=f;g.gain.setValueAtTime(v,ax.currentTime);g.gain.exponentialRampToValueAtTime(.001,ax.currentTime+d);o.connect(g);g.connect(ax.destination);o.start();o.stop(ax.currentTime+d)}
+function sOk(){tn(523,.1);setTimeout(()=>tn(784,.12),70)}
+function sFail(){tn(130,.3,'sawtooth',.04)}
+function sAlert(){tn(880,.08);setTimeout(()=>tn(880,.08),150)}
+function sStep(){tn(80,.015,'triangle',.006)}
+function sNode(){tn(400,.06,'triangle',.025);setTimeout(()=>tn(600,.08),50)}
+
+// ═══ CONSTANTS ═══
+const T=60,PR=22;
+const WALL=1,FLOOR=2;
+
+// ═══ ZONE PALETTES ═══
+const ZONES={
+  soc:  {floor:'#0c1628',wall:'#0a1020',grid:'rgba(0,150,255,.03)',accent:'#0088cc',name:'SOC Center'},
+  corr: {floor:'#10141e',wall:'#0c1018',grid:'rgba(255,255,255,.02)',accent:'#445566',name:'Corridor'},
+  noc:  {floor:'#181408',wall:'#14100a',grid:'rgba(255,180,0,.03)',accent:'#cc8800',name:'Network Operations'},
+  srv:  {floor:'#0c0810',wall:'#0a0610',grid:'rgba(255,0,80,.02)',accent:'#cc2244',name:'Server Room'},
+};
+
+// ═══ MAP — 32×28, zones encoded ═══
+const MW=32,MH=28;
+let map=[],zoneMap=[];
+
+// s=soc, c=corr, n=noc, r=srv, #=wall, .=floor
+const MAP_STR=[
+// SOC Room (top-left)                    Corridor        NOC Room (top-right)
+"################################",// 0
+"#ssssssssssss##cccc##nnnnnnnnnn#",// 1
+"#ssssssssssss##cccc##nnnnnnnnnn#",// 2
+"#ss##ss##ssss##cccc##nnn####nnn#",// 3
+"#ss##ss##ssss..cccc..nnn#nn#nnn#",// 4
+"#ssssssssssss..cccc..nnnnnnnnnn#",// 5
+"#ssssssssssss..cccc..nnnnnnnnnn#",// 6
+"#ss##ss##ssss##cccc##nnn####nnn#",// 7
+"#ssssssssssss##cccc##nnnnnnnnnn#",// 8
+"#ssssssssssss##cccc##nnnnnnnnnn#",// 9
+"##############.cccc.############",//10
+"###############cccc#############",//11
+"###############cccc#############",//12
+"##########.....cccc.....########",//13
+"#rrrrrrrrr.....cccc.....rrrrrrr#",//14
+"#rrrrrrrrr..rr.cccc.rr..rrrrrrr#",//15
+"#rr##rr##r..rr......rr..r##rrrr#",//16
+"#rr##rr##r..rr......rr..r##rrrr#",//17
+"#rrrrrrrrr..rr......rr..rrrrrrr#",//18
+"#rrrrrrrrr..rr.rrrr.rr..rrrrrrr#",//19
+"#rr##rr##r.............r##rrrr#",//20
+"#rr##rr##r..............rrrrrrr#",//21
+"#rrrrrrrrr..............rrrrrrr#",//22
+"#rrrrrrrrr..............rrrrrrr#",//23
+"#rrrrrrrrr..............rrrrrrr#",//24
+"#rrrrrrrrrrrrrrrrrrrrrrrrrrrrrrr#",//25 -- no, width issue
+"################################",//26
+"################################",//27
+];
+
+function buildMap(){
+  map=[];zoneMap=[];
+  for(let y=0;y<MH;y++){
+    const mr=[],zr=[];
+    const line=(MAP_STR[y]||'').padEnd(MW,'#');
+    for(let x=0;x<MW;x++){
+      const c=line[x];
+      if(c==='#'){mr.push(WALL);zr.push('corr')}
+      else if(c==='s'){mr.push(FLOOR);zr.push('soc')}
+      else if(c==='n'){mr.push(FLOOR);zr.push('noc')}
+      else if(c==='r'){mr.push(FLOOR);zr.push('srv')}
+      else if(c==='c'){mr.push(FLOOR);zr.push('corr')}
+      else if(c==='.'){mr.push(FLOOR);zr.push('corr')}
+      else{mr.push(WALL);zr.push('corr')}
+    }
+    map.push(mr);zoneMap.push(zr);
+  }
+}
+
+// ═══ NODES — systems in VectorPay ═══
+const NODES=[
+  // Phase 1: SOC
+  {x:4, y:2, zone:'soc',name:'SOC Alert',icon:'🔔',consequence:'аномалія не досліджена, зловмисник продовжив непомічений',
+   atk:'CloudTrail: 847 Decrypt-запитів від catalog-service о 3:47. Нормальний baseline — 12/годину. Алерт спрацював автоматично.',
+   ask:'Що робити першим?',
+   opts:['Перезапустити catalog-service і перевірити чи зникне алерт','Перевірити IAM-роль catalog-service і її поточні дозволи','Підняти baseline алерту до 900 щоб зменшити шум','Задокументувати алерт і передати ранковій зміні'],c:1,
+   ok:'Перевірка IAM-ролі покаже чи має сервіс легітимний доступ до KMS і чи не змінювались дозволи. Якщо роль була модифікована — це підтвердження компрометації. Перезапуск сервісу знищить volatile forensic-дані і не вирішить проблему.',
+   fl:'Без перевірки IAM-ролі неможливо відрізнити легітимну активність від компрометації. Перезапуск або ігнорування дає зловмиснику час продовжити операцію.'},
+
+  {x:9,y:5,zone:'soc',name:'Log Correlator',icon:'📊',consequence:'lateral movement не виявлений, зловмисник розширив доступ',
+   atk:'SIEM показує кореляцію: з IP 10.0.3.47 (developer workstation) за останню годину — SSH brute-force на 3 сервери, CreateRole в IAM, GetObject з S3.',
+   ask:'Що це означає?',
+   opts:['Розробник тестує нову фічу і потребує доступу до різних систем','Робоча станція скомпрометована — класичний lateral movement','Автоматизований CI/CD pipeline з надмірними правами доступу','Збій у SIEM — хибна кореляція незв\'язаних подій'],c:1,
+   ok:'Три різних типи активності (SSH, IAM, S3) з однієї workstation за годину — класичний lateral movement з MITRE ATT&CK. Робоча станція скомпрометована і використовується як pivot point для доступу до інших систем.',
+   fl:'SSH brute-force + створення IAM-ролей + читання S3 з робочої станції розробника — це не тестування і не CI/CD. Кореляція трьох різних TTP з одного джерела = lateral movement.'},
+
+  {x:3,y:8,zone:'soc',name:'Alert Triage',icon:'⚡',consequence:'ескалація привілеїв пропущена, зловмисник отримав admin-доступ',
+   atk:'Одночасно 4 алерти: (1) новий IAM role з AdministratorAccess, (2) S3 GetObject з нетипового IP, (3) EC2 в eu-west-3, (4) unusual API call pattern.',
+   ask:'Який алерт найпріоритетніший?',
+   opts:['S3 GetObject — потенційна ексфільтрація конфіденційних даних','IAM role з AdministratorAccess — критична ескалація привілеїв','EC2 в незвичному регіоні — можливий криптомайнінг','Unusual API pattern — розвідка і підготовка до атаки'],c:1,
+   ok:'AdministratorAccess = повний контроль над AWS-акаунтом. Privilege escalation має найвищий пріоритет, бо дає зловмиснику можливість робити все інше — ексфільтрацію, persistence, destruction. Блокуєш ескалацію — обмежуєш все решта.',
+   fl:'Без блокування ескалації привілеїв зловмисник з AdministratorAccess може створити нові access keys, змінити Security Groups, видалити логи — жодні інші контрзаходи не допоможуть.'},
+
+  {x:10,y:3,zone:'soc',name:'Source ID',icon:'🔍',consequence:'persistence mechanism в K8s не виявлений',
+   atk:'kubectl показує pod "metrics-collector-7f8d" з image tag що не відповідає жодному запису в container registry. Pod працює 11 днів.',
+   ask:'Що сталось?',
+   opts:['DevOps розгорнув сервіс напряму і забув додати в registry','Зловмисник розгорнув власний контейнер як persistence mechanism','Збій синхронізації між registry і кластером, потребує рестарту','QA-команда запустила тестовий pod і забула зупинити'],c:1,
+   ok:'Невідомий image tag + 11 днів роботи = persistence mechanism. Зловмисник розгорнув контейнер з власним image для збереження доступу до кластера. Назва "metrics-collector" маскує pod під легітимний моніторинг.',
+   fl:'Pod з невідомого image що працює 11 днів і не відповідає registry — це не забутий тест і не sync delay. Назви типу "metrics-collector" — стандартна тактика маскування зловмисника.'},
+
+  // Phase 2: NOC
+  {x:23,y:2,zone:'noc',name:'API Gateway',icon:'🌐',consequence:'фальшивий service account продовжує діяти',
+   atk:'Access logs: запити до /admin/export з валідним JWT. Токен від service account "data-export-svc", створений 10 днів тому.',
+   ask:'Що перевірити першим?',
+   opts:['Валідність формату JWT і термін дії токена','Хто створив data-export-svc і з якої IP-адреси','Чи відповідає payload запитів стандартному формату','Навантаження на API Gateway за останні 24 години'],c:1,
+   ok:'Service account створений 10 днів тому — під час активної компрометації. Перевірка provenance (хто, звідки, з якою IAM-роллю) покаже чи це легітимний акаунт. JWT формально валідний — технічна перевірка нічого не дасть.',
+   fl:'JWT валідний технічно. Проблема не в форматі токена, а в тому хто створив service account. Без перевірки provenance зловмисник продовжує використовувати легітимний механізм автентифікації.'},
+
+  {x:28,y:5,zone:'noc',name:'PostgreSQL',icon:'🗄️',consequence:'2.3M рядків PII ексфільтровано без реакції',
+   atk:'Audit log: SELECT * FROM customers WHERE 1=1 о 4:12 AM. Source: catalog-service role. Результат: 2.3M рядків з PII.',
+   ask:'Це зловмисник?',
+   opts:['Ні — catalog-service має легітимний доступ, це нормальний запит','Так — WHERE 1=1 і час 4:12 AM вказують на масову ексфільтрацію','Потрібна додаткова інформація для однозначного висновку','Ні — це стандартний scheduled backup job о нічний час'],c:1,
+   ok:'WHERE 1=1 повертає ВСІ рядки без фільтрації — це dump таблиці, а не бізнес-запит. Час 4:12 AM + скомпрометована роль = масова ексфільтрація PII. Легітимні сервіси використовують конкретні WHERE-умови.',
+   fl:'Легітимний catalog-service робить SELECT з конкретними умовами (WHERE id=X), а не dump всієї таблиці. WHERE 1=1 о 4 ранку через скомпрометовану роль — це data exfiltration.'},
+
+  {x:25,y:8,zone:'noc',name:'Redis Cache',icon:'📦',consequence:'зловмисник зберіг доступ через старі credentials',
+   atk:'Redis MONITOR: AUTH з токеном що був ротований 2 тижні тому. Внутрішній IP. Запити на читання session-даних.',
+   ask:'Що це означає?',
+   opts:['Один із сервісів пропустив оновлення конфігурації після ротації','Зловмисник зібрав credentials до ротації і не знає про зміну','Баг у Redis — відображаються старі запити з кешу команд','Тестове середовище помилково підключене до production Redis'],c:1,
+   ok:'Токен ротований 2 тижні тому, але хтось все ще використовує стару версію — це зловмисник, який зібрав credentials ДО ротації. Він не знає що вони змінились. Це timing evidence що вказує на момент первинної компрометації.',
+   fl:'Credentials зібрані ДО ротації — зловмисник не знає про зміну, що його і видає. Якби це був легітимний сервіс — він оновив би конфігурацію при ротації.'},
+
+  {x:22,y:6,zone:'noc',name:'Elasticsearch',icon:'📋',consequence:'14GB PII у staging area готові до ексфільтрації',
+   atk:'Новий index ".hidden-export-2024" — 8 днів, 14GB, містить PII з PostgreSQL у JSON. Доступ: відкритий для всіх сервісів.',
+   ask:'Що це?',
+   opts:['Backup index створений data team для аналітики','Staging area зловмисника для підготовки ексфільтрації','Auto-generated index від Elasticsearch lifecycle policy','Тимчасовий index для міграції даних між кластерами'],c:1,
+   ok:'Prefix ".hidden-" + PII з PostgreSQL в JSON = staging area. Зловмисник агрегує дані з різних джерел перед масовим вивантаженням. Відкритий доступ для всіх сервісів означає що зловмисник може прочитати ці дані з будь-якого скомпрометованого контейнера.',
+   fl:'14GB PII в прихованому індексі з "hidden" в імені — це не backup, не lifecycle policy і не міграція. Data team використовує очевидні назви і обмежує доступ.'},
+
+  // Phase 3: Server Room
+  {x:5,y:15,zone:'srv',name:'K8s Cluster',icon:'☸️',consequence:'зловмисник продовжує сканування через pod',
+   atk:'Скомпрометований pod має network access до всіх namespaces. Зловмисник сканує внутрішні сервіси.',
+   ask:'Як ізолювати без втрати доказів?',
+   opts:['Видалити pod негайно і перевірити чи зникне активність','Застосувати Network Policy: deny all для namespace, pod зберегти','Перезапустити весь кластер для гарантованого очищення','Змінити порти всіх сервісів щоб зламати з\'єднання зловмисника'],c:1,
+   ok:'Network Policy deny all ingress/egress ізолює pod від мережі, але зберігає контейнер для forensic-аналізу (пам\'ять, файлова система, env variables). Переконайтесь що ваш CNI plugin підтримує Network Policies (Calico, Cilium — так, базовий kubenet — ні).',
+   fl:'Видалення pod знищує forensic-дані: пам\'ять процесів, тимчасові файли, environment variables. Network Policy зберігає все це, одночасно блокуючи мережевий доступ зловмисника.'},
+
+  {x:15,y:17,zone:'srv',name:'IAM Roles',icon:'🔑',consequence:'фальшиві ролі з kms:Decrypt залишились активними',
+   atk:'Зловмисник створив 3 ролі: "monitoring-agent", "log-processor", "cache-warmer". Кожна має kms:Decrypt. Імена виглядають легітимно.',
+   ask:'Як обробити ці ролі?',
+   opts:['Видалити всі три ролі і заблокувати повторне створення','Додати deny-all inline policy до кожної ролі, зберегти для forensic','Змінити паролі всіх справжніх IAM-користувачів системи','Тимчасово вимкнути KMS щоб заблокувати decrypt операції'],c:1,
+   ok:'Deny-all inline policy негайно блокує всі дії ролі, але зберігає роль для forensic-аналізу (creation date, attached policies, trust relationships, CloudTrail history). Також відкликайте всі активні сесії через AWS STS.',
+   fl:'Видалення ролей знищує audit trail — ви втрачаєте інформацію про те коли ролі створені, хто їх використовував, які операції виконував. Deny-all inline policy зупиняє зловмисника І зберігає докази.'},
+
+  {x:25,y:20,zone:'srv',name:'S3 Buckets',icon:'🪣',consequence:'480GB ML training data скопійовано назовні',
+   atk:'S3 logs: GetObject на ML training bucket. 480GB на зовнішній IP через NAT Gateway за 6 годин.',
+   ask:'Пріоритетна дія?',
+   opts:['Заблокувати конкретний зовнішній IP на мережевому firewall','Відкликати credentials, заблокувати public access, VPC endpoint only','Увімкнути S3 versioning для відстеження майбутніх змін','Перемістити залишок даних у новий бакет з іншим ім\'ям'],c:1,
+   ok:'Три дії одночасно: (1) відкликати всі credentials що мали доступ до бакету, (2) заблокувати public access через S3 Block Public Access, (3) обмежити доступ лише через VPC endpoint. Блокування конкретного IP марне — зловмисник змінить IP за секунди.',
+   fl:'Блокування одного IP — зловмисник просто перейде на інший. Versioning не зупиняє ексфільтрацію. Переміщення даних не закриває доступ. Потрібно діяти на рівні IAM policy і network policy одночасно.'},
+];
+
+// Attacker path - fixed narrative order
+const ATK_PATH=[0,1,2,3, 4,5,6,7, 8,9,10];
+const ATK_PAUSE=2500;
+const ATK_SPEED_BASE=3.2;
+
+// ═══ GAME STATE ═══
+let px,py,camX=0,camY=0;
+let atkIdx=0,atkX,atkY,atkWait=0,atkAtNode=-1,atkSpeed=ATK_SPEED_BASE;
+let damage=0,maxDamage=100;
+let results=[],qActive=false,nearNode=null,qTimer=0,qNode=null;
+let trail=[];
+let finalePhase=0,finaleTimer=0; // 0=normal, 1=alert, 2=fleeing, 3=boss, 4=resolution
+const EXIT_X=16,EXIT_Y=26; // NAT Gateway exit point// [{x,y,alpha}]
+let taunt='',tauntTimer=0;
+let defReply='',defReplyTimer=0;
+
+const DEF_OK=[
+'Contained. Далі.',
+'Один менше. Рухаємось.',
+'Got it. Що далі?',
+'Цей вузол чистий ✓',
+'Ізольовано. Next.',
+'Зафіксовано. Йдемо далі.',
+'Є контакт. Працюємо.',
+];
+const DEF_FAIL=[
+'Чорт... треба швидше.',
+'Пропустив. Не повторюватиметься.',
+'Помилка. Зосередитись.',
+'Він випереджає...',
+'Damage росте. Тиснемо.',
+];
+const TAUNTS=[
+'Алерт? Поки розберетесь — я вже далі 😏',
+'О, SIEM помітив... хто читає логи о 4 ранку? 🤔',
+'Стільки алертів — спробуй знайди справжній 🎯',
+'Цей pod працює 11 днів і ніхто не помітив 🤫',
+'JWT валідний, акаунт мій. Все легітимно 😇',
+'SELECT * ... 2.3 мільйони рядків. Дякую 📋',
+'Старі credentials досі працюють? Серйозно? 😂',
+'14GB готові до вивантаження. Staging complete.',
+'Network policies? Яких саме? 🤔',
+'Три ролі, три ключі. Знайди всі 🔑',
+'480GB через NAT Gateway. Майже готово 📦',
+];
+let gameRunning=false,lastTime=0,stepCD=0;
+let currentZone='',zoneAnnTimer=0;
+let gameMode='simulation';
+
+function applyMode(){
+  if(gameMode==='training'){
+    atkSpeed=ATK_SPEED_BASE*.25;
+  }else{
+    atkSpeed=ATK_SPEED_BASE;
+  }
+}
+let keys={},dpadKeys={};
+let typeTimer=null;
+
+// ═══ CANVAS ═══
+const cv=document.getElementById('cv'),ctx=cv.getContext('2d');
+let W,H;
+function resize(){W=cv.width=window.innerWidth;H=cv.height=window.innerHeight}
+window.addEventListener('resize',resize);resize();
+
+// ═══ INPUT ═══
+document.addEventListener('keydown',e=>{keys[e.key]=true;if(e.key===' '&&nearNode&&!qActive){e.preventDefault();interact()}});
+document.addEventListener('keyup',e=>{keys[e.key]=false});
+['dp-u','dp-d','dp-l','dp-r'].forEach(id=>{
+  const el=document.getElementById(id);
+  const km={'dp-u':'ArrowUp','dp-d':'ArrowDown','dp-l':'ArrowLeft','dp-r':'ArrowRight'};
+  el.addEventListener('pointerdown',e=>{e.preventDefault();dpadKeys[km[id]]=true});
+  el.addEventListener('pointerup',()=>{dpadKeys[km[id]]=false});
+  el.addEventListener('pointerleave',()=>{dpadKeys[km[id]]=false});
+});
+document.getElementById('actbtn').addEventListener('pointerdown',e=>{e.preventDefault();if(nearNode&&!qActive)interact()});
+function isKey(k){return keys[k]||dpadKeys[k]}
+
+// ═══ COLLISION ═══
+function solid(tx,ty){
+  if(tx<0||ty<0||tx>=MW||ty>=MH)return true;
+  return map[ty][tx]===WALL;
+}
+
+// ═══ ATTACKER NPC ═══
+function updateAttacker(dt){
+  if(atkIdx>=ATK_PATH.length){return}
+  if(atkWait>0){atkWait-=dt*1000;return}
+
+  const target=NODES[ATK_PATH[atkIdx]];
+  const tx=target.x*T+T/2,ty=target.y*T+T/2;
+  const dx=tx-atkX,dy=ty-atkY;
+  const dist=Math.sqrt(dx*dx+dy*dy);
+
+  if(dist<4){
+    // Arrived at node
+    if(!target.compromised){
+      target.compromised=true;
+      sAlert();
+      damage=Math.min(maxDamage,damage+2);
+      // Taunt
+      if(atkIdx<TAUNTS.length){taunt=TAUNTS[atkIdx];tauntTimer=3.5}
+    }
+    // Leave trail
+    trail.push({x:target.x,y:target.y,t:Date.now()});
+    atkAtNode=ATK_PATH[atkIdx];
+    atkWait=gameMode==='training'?5000:ATK_PAUSE; // longer pause in training
+    atkIdx++;
+  }else{
+    const spd=atkSpeed*T*dt;
+    atkX+=dx/dist*spd;
+    atkY+=dy/dist*spd;
+  }
+
+  if(tauntTimer>0) tauntTimer-=dt;
+  if(defReplyTimer>0) defReplyTimer-=dt;
+}
+
+// ═══ UPDATE ═══
+function update(dt){
+  if(!gameRunning)return;
+
+  // Damage: grows per unresolved compromised node (not constant tick)
+  const inQ=qActive&&gameMode==='training';
+  if(!inQ){
+    const unresolvedCount=NODES.filter(n=>n.compromised&&!n.resolved).length;
+    damage=Math.min(maxDamage,damage+dt*unresolvedCount*0.2); // 0.2%/sec per unresolved node
+  }
+  document.getElementById('dmgFill').style.width=Math.min(100,damage)+'%';
+  if(gameMode==='simulation') updateDistraction(dt);
+
+  if(qActive){
+    if(gameMode==='simulation'){
+      qTimer-=dt;
+      const tEl=document.getElementById('qtimer');
+      if(tEl)tEl.textContent=Math.max(0,Math.ceil(qTimer))+'s';
+      if(qTimer<=0&&qNode&&!qNode.resolved){autoFail()}
+    }
+    return;
+  }
+
+  // Player movement
+  let dx=0,dy=0;
+  if(isKey('w')||isKey('W')||isKey('ArrowUp'))dy=-1;
+  if(isKey('s')||isKey('S')||isKey('ArrowDown'))dy=1;
+  if(isKey('a')||isKey('A')||isKey('ArrowLeft'))dx=-1;
+  if(isKey('d')||isKey('D')||isKey('ArrowRight'))dx=1;
+  if(dx&&dy){dx*=.707;dy*=.707}
+  const spd=T*3.5*dt,r=PR-2;
+  if(dx){const nx=px+dx*spd;if(!solid(Math.floor((nx-r)/T),Math.floor((py-r)/T))&&!solid(Math.floor((nx+r)/T),Math.floor((py+r)/T)))px=nx}
+  if(dy){const ny=py+dy*spd;if(!solid(Math.floor((px-r)/T),Math.floor((ny-r)/T))&&!solid(Math.floor((px+r)/T),Math.floor((ny+r)/T)))py=ny}
+  if(dx||dy){stepCD-=dt;if(stepCD<=0){sStep();stepCD=.35}}
+
+  camX+=(px-W/2-camX)*.08;camY+=(py-H/2-camY)*.08;
+
+  // Zone detection
+  const ptx=Math.floor(px/T),pty=Math.floor(py/T);
+  const newZone=(zoneMap[pty]&&zoneMap[pty][ptx])||'corr';
+  if(newZone!==currentZone&&newZone!=='corr'){
+    currentZone=newZone;
+    const z=ZONES[newZone];
+    document.getElementById('zoneAnnText').textContent=z.name;
+    document.getElementById('zoneAnnSub').textContent=newZone==='soc'?'PHASE 1 · DETECTION':newZone==='noc'?'PHASE 2 · SCOPING':'PHASE 3 · CONTAINMENT';
+    const ann=document.getElementById('zoneAnn');
+    ann.style.color=z.accent;
+    ann.classList.add('show');
+    clearTimeout(zoneAnnTimer);
+    zoneAnnTimer=setTimeout(()=>ann.classList.remove('show'),2500);
+  }
+
+  // Attacker
+  updateAttacker(dt);
+
+  // Near node check
+  nearNode=null;
+  for(const n of NODES){
+    if(!n.compromised||n.resolved)continue;
+    const ndx=n.x*T+T/2-px,ndy=n.y*T+T/2-py;
+    if(Math.abs(ndx)<T*2&&Math.abs(ndy)<T*2){nearNode=n;break}
+  }
+  document.getElementById('prompt').classList.toggle('show',!!nearNode&&!qActive);
+
+  // Tutorial progress
+  if(tutStep>=0) checkTutProgress();
+
+  // End condition → trigger finale (not in tutorial)
+  if(tutStep<0&&finalePhase===0&&atkIdx>=ATK_PATH.length&&NODES.filter(n=>n.compromised&&!n.resolved).length===0){
+    finalePhase=1;finaleTimer=3;
+    taunt='Мене засікли. Час тікати! 🏃';tauntTimer=3;
+    // Alert announcement
+    document.getElementById('zoneAnnText').textContent='⚠️ ЗЛОВМИСНИК ВИЯВИВ СТЕЖЕННЯ';
+    document.getElementById('zoneAnnSub').textContent='Він намагається втекти через NAT Gateway';
+    const ann=document.getElementById('zoneAnn');
+    ann.style.color='#ff2255';ann.classList.add('show');
+    sAlert();setTimeout(sAlert,300);setTimeout(sAlert,600);
+  }
+
+  // Finale phase 1: alert countdown
+  if(finalePhase===1){
+    finaleTimer-=dt;
+    if(finaleTimer<=0){
+      finalePhase=2; // attacker starts fleeing
+      document.getElementById('zoneAnn').classList.remove('show');
+    }
+  }
+
+  // Finale phase 2: attacker fleeing to exit
+  if(finalePhase===2){
+    const ex=EXIT_X*T+T/2,ey=EXIT_Y*T+T/2;
+    const fdx=ex-atkX,fdy=ey-atkY;
+    const fd=Math.sqrt(fdx*fdx+fdy*fdy);
+    damage=Math.min(maxDamage,damage+dt*3); // damage accelerates during flee
+    if(fd<T*2){
+      // Attacker reached exit — trigger boss decision
+      finalePhase=3;
+      showBossDecision();
+    }else{
+      const fs=atkSpeed*T*1.5*dt; // faster when fleeing
+      atkX+=fdx/fd*fs;atkY+=fdy/fd*fs;
+    }
+  }
+}
+
+// ═══ RENDER ═══
+function render(){
+  ctx.clearRect(0,0,W,H);ctx.save();ctx.translate(-camX,-camY);
+  const stx=Math.max(0,Math.floor(camX/T)-1),etx=Math.min(MW-1,Math.ceil((camX+W)/T)+1);
+  const sty=Math.max(0,Math.floor(camY/T)-1),ety=Math.min(MH-1,Math.ceil((camY+H)/T)+1);
+
+  // Tiles
+  for(let ty=sty;ty<=ety;ty++){
+    for(let tx=stx;tx<=etx;tx++){
+      const tile=map[ty][tx],zn=zoneMap[ty][tx],z=ZONES[zn],sx=tx*T,sy=ty*T;
+      if(tile===FLOOR){
+        ctx.fillStyle=z.floor;ctx.fillRect(sx,sy,T,T);
+        ctx.fillStyle=z.grid;ctx.fillRect(sx+T/2-.5,sy+T/2-.5,1,1);
+      }else{
+        // Wall — check if interior (adjacent to floor)
+        const adj=(tx>0&&map[ty][tx-1]===FLOOR)||(tx<MW-1&&map[ty][tx+1]===FLOOR)||(ty>0&&map[ty-1]&&map[ty-1][tx]===FLOOR)||(ty<MH-1&&map[ty+1]&&map[ty+1][tx]===FLOOR);
+        ctx.fillStyle=z.wall;ctx.fillRect(sx,sy,T,T);
+        if(adj&&zn==='soc'){
+          // Desk with bright monitor
+          ctx.fillStyle='#162040';ctx.fillRect(sx+3,sy+3,T-6,T-6);
+          // monitor screen glow
+          ctx.fillStyle='rgba(0,140,255,.25)';ctx.fillRect(sx+8,sy+6,T-16,T*.4);
+          ctx.strokeStyle='rgba(0,160,255,.3)';ctx.lineWidth=1;ctx.strokeRect(sx+8,sy+6,T-16,T*.4);
+          // screen content lines
+          ctx.fillStyle='rgba(0,200,255,.15)';
+          for(let i=0;i<3;i++) ctx.fillRect(sx+12,sy+10+i*6,T-28,2);
+          // LED
+          const blink=((tx*7+ty*3+Math.floor(now/800))%5)>0;
+          ctx.fillStyle=blink?'rgba(0,255,136,.5)':'rgba(255,60,0,.3)';
+          ctx.beginPath();ctx.arc(sx+T-10,sy+T-8,2.5,0,Math.PI*2);ctx.fill();
+        }else if(adj&&zn==='noc'){
+          // Server rack — bright LEDs
+          ctx.fillStyle='#201a0c';ctx.fillRect(sx+3,sy+1,T-6,T-2);
+          ctx.strokeStyle='rgba(255,200,0,.1)';ctx.lineWidth=.8;
+          for(let i=0;i<4;i++) ctx.strokeRect(sx+6,sy+3+i*(T-6)/4,T-12,(T-6)/4);
+          // bright LEDs column
+          for(let i=0;i<4;i++){
+            const on=((tx*3+ty*7+i+Math.floor(now/500))%3)>0;
+            ctx.fillStyle=on?'rgba(0,255,100,.6)':'rgba(255,60,0,.4)';
+            ctx.beginPath();ctx.arc(sx+T-10,sy+8+i*12,3,0,Math.PI*2);ctx.fill();
+            if(on){ctx.fillStyle='rgba(0,255,100,.1)';ctx.beginPath();ctx.arc(sx+T-10,sy+8+i*12,8,0,Math.PI*2);ctx.fill()}
+          }
+        }else if(adj&&zn==='srv'){
+          // Server rack — red accent
+          ctx.fillStyle='#1c0a14';ctx.fillRect(sx+2,sy+1,T-4,T-2);
+          // rack slots
+          ctx.strokeStyle='rgba(255,40,80,.08)';ctx.lineWidth=.8;
+          for(let i=0;i<5;i++) ctx.strokeRect(sx+5,sy+2+i*(T-4)/5,T-10,(T-4)/5);
+          // red LEDs
+          for(let i=0;i<3;i++){
+            const led=((tx*5+ty*11+i+Math.floor(now/400))%4);
+            ctx.fillStyle=led===0?'rgba(255,34,85,.7)':'rgba(255,34,85,.15)';
+            ctx.beginPath();ctx.arc(sx+9,sy+10+i*14,3,0,Math.PI*2);ctx.fill();
+            if(led===0){ctx.fillStyle='rgba(255,34,85,.08)';ctx.beginPath();ctx.arc(sx+9,sy+10+i*14,10,0,Math.PI*2);ctx.fill()}
+          }
+        }else{
+          ctx.strokeStyle='rgba(255,255,255,.02)';ctx.lineWidth=.5;ctx.strokeRect(sx+.5,sy+.5,T-1,T-1);
+        }
+      }
+    }
+  }
+
+  // Trail
+  const now=Date.now();
+  trail.forEach(t=>{
+    const age=(now-t.t)/1000;
+    const a=Math.max(0,.5-age*.01);
+    ctx.fillStyle=`rgba(255,34,85,${a*.15})`;
+    ctx.fillRect(t.x*T,t.y*T,T,T);
+    const p=.3+.2*Math.sin(now*.003+t.x);
+    ctx.fillStyle=`rgba(255,34,85,${p*a})`;
+    ctx.fillRect(t.x*T+T/2-3,t.y*T+T/2-3,6,6);
+  });
+
+  // Network connection lines
+  ctx.lineWidth=1;
+
+  // Exit point (NAT Gateway) — visible during finale
+  if(finalePhase>=1){
+    const ex=EXIT_X*T,ey=EXIT_Y*T;
+    const ep=.4+.3*Math.sin(now*.005);
+    ctx.fillStyle=`rgba(255,34,85,${ep*.15})`;ctx.beginPath();ctx.arc(ex+T/2,ey+T/2,T*2,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle=`rgba(255,34,85,${ep*.5})`;ctx.lineWidth=2;ctx.setLineDash([4,4]);
+    ctx.beginPath();ctx.arc(ex+T/2,ey+T/2,T*1.5,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+    ctx.font=`${T*.4}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText('🌐',ex+T/2,ey+T/2);
+    ctx.font='bold '+Math.round(T*.2)+'px "Share Tech Mono"';
+    ctx.fillStyle=`rgba(255,34,85,${ep*.7})`;ctx.fillText('NAT GATEWAY',ex+T/2,ey+T/2+T*.8);
+    ctx.fillStyle=`rgba(255,34,85,${ep*.4})`;ctx.fillText('EXIT POINT',ex+T/2,ey+T/2+T*1.1);
+    ctx.lineWidth=1;
+  }
+  for(let i=0;i<ATK_PATH.length-1;i++){
+    const a=NODES[ATK_PATH[i]],b=NODES[ATK_PATH[i+1]];
+    const ax=a.x*T+T/2,ay=a.y*T+T/2,bx=b.x*T+T/2,by=b.y*T+T/2;
+    const bothComp=a.compromised&&b.compromised;
+    ctx.strokeStyle=bothComp?'rgba(255,34,85,.08)':'rgba(255,255,255,.03)';
+    ctx.setLineDash([6,8]);
+    ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(bx,by);ctx.stroke();
+    ctx.setLineDash([]);
+    // animated pulse along compromised connections
+    if(bothComp){
+      const prog=((now*.0003+i*.2)%1);
+      const px2=ax+(bx-ax)*prog,py2=ay+(by-ay)*prog;
+      ctx.fillStyle='rgba(255,34,85,.25)';ctx.beginPath();ctx.arc(px2,py2,3,0,Math.PI*2);ctx.fill();
+    }
+  }
+
+  // Nodes — distinct shapes per system, LARGE
+  NODES.forEach(n=>{
+    const cx=n.x*T+T/2,cy=n.y*T+T/2,r=T*.65;
+    const isComp=n.compromised,isRes=n.resolved;
+    const p=.5+.3*Math.sin(now*.004+n.x);
+
+    // Glow
+    if(isComp&&!isRes){
+      ctx.fillStyle=`rgba(255,34,85,${p*.12})`;ctx.beginPath();ctx.arc(cx,cy,T*1.8,0,Math.PI*2);ctx.fill();
+    }
+    if(isRes){
+      ctx.fillStyle=`rgba(0,255,136,${.06})`;ctx.beginPath();ctx.arc(cx,cy,T*1.3,0,Math.PI*2);ctx.fill();
+    }
+
+    const col=isRes?'rgba(0,255,136,':isComp?'rgba(255,34,85,':'rgba(100,160,200,';
+    const alpha=isRes?.5:isComp?p*.7:.2;
+    ctx.strokeStyle=col+alpha+')';ctx.lineWidth=isComp&&!isRes?2.5:1.5;
+    ctx.fillStyle=col+(alpha*.3)+')';
+
+    if(n.zone==='soc'){
+      // Monitor shape — big
+      ctx.fillRect(cx-r,cy-r*.6,r*2,r*1.1);ctx.strokeRect(cx-r,cy-r*.6,r*2,r*1.1);
+      ctx.fillRect(cx-r*.15,cy+r*.5,r*.3,r*.35);
+      // screen glow
+      const sc=isRes?'rgba(0,255,136,.1)':isComp?'rgba(255,34,85,.1)':'rgba(0,150,255,.08)';
+      ctx.fillStyle=sc;ctx.fillRect(cx-r+4,cy-r*.6+3,r*2-8,r*1.1-6);
+    }else if(n.name==='PostgreSQL'){
+      // Cylinder
+      ctx.beginPath();ctx.ellipse(cx,cy-r*.3,r*.9,r*.35,0,0,Math.PI*2);ctx.fill();ctx.stroke();
+      ctx.fillRect(cx-r*.9,cy-r*.3,r*1.8,r*.9);
+      ctx.strokeRect(cx-r*.9,cy-r*.3,r*1.8,r*.9);
+      ctx.beginPath();ctx.ellipse(cx,cy+r*.6,r*.9,r*.35,0,0,Math.PI*2);ctx.fill();ctx.stroke();
+    }else if(n.name==='Redis Cache'){
+      // Diamond
+      ctx.beginPath();ctx.moveTo(cx,cy-r);ctx.lineTo(cx+r*.8,cy);ctx.lineTo(cx,cy+r);ctx.lineTo(cx-r*.8,cy);ctx.closePath();ctx.fill();ctx.stroke();
+    }else if(n.name==='API Gateway'){
+      // Hexagon
+      ctx.beginPath();for(let i=0;i<6;i++){const a=Math.PI/3*i-Math.PI/6;ctx.lineTo(cx+r*Math.cos(a),cy+r*Math.sin(a))}ctx.closePath();ctx.fill();ctx.stroke();
+    }else if(n.name==='K8s Cluster'){
+      // Wheel
+      ctx.beginPath();ctx.arc(cx,cy,r,0,Math.PI*2);ctx.fill();ctx.stroke();
+      ctx.beginPath();ctx.arc(cx,cy,r*.35,0,Math.PI*2);ctx.stroke();
+      for(let i=0;i<6;i++){const a=Math.PI/3*i;ctx.beginPath();ctx.moveTo(cx+r*.35*Math.cos(a),cy+r*.35*Math.sin(a));ctx.lineTo(cx+r*.85*Math.cos(a),cy+r*.85*Math.sin(a));ctx.stroke()}
+    }else if(n.name==='S3 Buckets'){
+      // Bucket
+      ctx.beginPath();ctx.moveTo(cx-r*.6,cy-r);ctx.lineTo(cx+r*.6,cy-r);ctx.lineTo(cx+r*.85,cy+r);ctx.lineTo(cx-r*.85,cy+r);ctx.closePath();ctx.fill();ctx.stroke();
+    }else if(n.name==='IAM Roles'){
+      // Key
+      ctx.beginPath();ctx.arc(cx-r*.3,cy,r*.45,0,Math.PI*2);ctx.fill();ctx.stroke();
+      ctx.fillRect(cx,cy-r*.2,r*.9,r*.4);ctx.strokeRect(cx,cy-r*.2,r*.9,r*.4);
+      ctx.fillRect(cx+r*.5,cy+r*.2,r*.15,r*.25);ctx.fillRect(cx+r*.7,cy+r*.2,r*.15,r*.25);
+    }else if(n.name==='Elasticsearch'){
+      // Magnifying glass
+      ctx.beginPath();ctx.arc(cx-r*.1,cy-r*.1,r*.55,0,Math.PI*2);ctx.fill();ctx.stroke();
+      ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(cx+r*.3,cy+r*.3);ctx.lineTo(cx+r*.7,cy+r*.7);ctx.stroke();ctx.lineWidth=isComp?2.5:1.5;
+    }else{
+      ctx.beginPath();if(ctx.roundRect)ctx.roundRect(cx-r,cy-r,r*2,r*2,8);else{ctx.rect(cx-r,cy-r,r*2,r*2)}ctx.fill();ctx.stroke();
+    }
+
+    // Label — large, white
+    ctx.font='bold '+Math.round(T*.22)+'px "Chakra Petch"';
+    ctx.fillStyle=isRes?'rgba(0,255,136,.7)':isComp?'rgba(255,100,130,.8)':'rgba(200,220,240,.3)';
+    ctx.textAlign='center';ctx.textBaseline='alphabetic';
+    ctx.fillText(n.name,cx,cy+r+T*.35);
+
+    // Emoji icon on top of shape
+    ctx.font=`${T*.55}px serif`;ctx.textBaseline='middle';
+    ctx.globalAlpha=isRes?.6:isComp?.8:.3;
+    ctx.fillText(n.icon,cx,cy);
+    ctx.globalAlpha=1;
+  });
+
+  // Attacker character — emoji ninja
+  if(atkIdx<ATK_PATH.length||atkWait>0||finalePhase>=1&&finalePhase<=3){
+    const ap=.6+.2*Math.sin(now*.003);
+    // red glow - bigger during finale
+    const glowR=finalePhase>=2?T*2.5:T*1.5;
+    ctx.fillStyle=`rgba(255,34,85,${ap*(finalePhase>=2?.18:.1)})`;ctx.beginPath();ctx.arc(atkX,atkY,glowR,0,Math.PI*2);ctx.fill();
+    // shadow
+    ctx.fillStyle='rgba(0,0,0,.3)';ctx.beginPath();ctx.ellipse(atkX,atkY+PR+4,PR*.8,PR*.3,0,0,Math.PI*2);ctx.fill();
+    // emoji
+    ctx.font=`${T*1.1}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText('🥷',atkX,atkY-2);
+    // Taunt bubble
+    if(tauntTimer>0&&taunt){
+      const ta=Math.min(1,tauntTimer/0.5); // fade out in last 0.5s
+      ctx.font=`${T*.28}px "Chakra Petch"`;ctx.textAlign='left';ctx.textBaseline='bottom';
+      const tw=ctx.measureText(taunt).width;
+      const bx=atkX+PR+8,by=atkY-PR-20;
+      // bubble background
+      ctx.fillStyle=`rgba(20,8,16,${ta*.9})`;
+      ctx.beginPath();
+      if(ctx.roundRect) ctx.roundRect(bx-8,by-T*.32-4,tw+16,T*.38,6);
+      else ctx.rect(bx-8,by-T*.32-4,tw+16,T*.38);
+      ctx.fill();
+      ctx.strokeStyle=`rgba(255,34,85,${ta*.3})`;ctx.lineWidth=1;ctx.stroke();
+      // triangle pointer
+      ctx.fillStyle=`rgba(20,8,16,${ta*.9})`;
+      ctx.beginPath();ctx.moveTo(bx+4,by+2);ctx.lineTo(bx-4,by+2);ctx.lineTo(bx,by+10);ctx.fill();
+      // text
+      ctx.fillStyle=`rgba(255,200,200,${ta*.7})`;
+      ctx.fillText(taunt,bx,by);
+    }
+  }
+
+  // Player character — emoji detective
+  const glow=.12+.06*Math.sin(now*.002);
+  ctx.fillStyle=`rgba(0,150,255,${glow*.12})`;ctx.beginPath();ctx.arc(px,py,T*1.3,0,Math.PI*2);ctx.fill();
+  // shadow
+  ctx.fillStyle='rgba(0,0,0,.25)';ctx.beginPath();ctx.ellipse(px,py+PR+4,PR*.8,PR*.3,0,0,Math.PI*2);ctx.fill();
+  // emoji
+  ctx.font=`${T*1.1}px serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText('🕵️',px,py-2);
+  // Defender reply bubble
+  if(defReplyTimer>0&&defReply){
+    const da=Math.min(1,defReplyTimer/0.4);
+    ctx.font=`${T*.26}px "Chakra Petch"`;ctx.textAlign='right';ctx.textBaseline='bottom';
+    const dw=ctx.measureText(defReply).width;
+    const dbx=px-PR-8,dby=py-PR-18;
+    ctx.fillStyle=`rgba(8,16,30,${da*.9})`;
+    ctx.beginPath();
+    if(ctx.roundRect) ctx.roundRect(dbx-dw-12,dby-T*.3-4,dw+16,T*.36,6);
+    else ctx.rect(dbx-dw-12,dby-T*.3-4,dw+16,T*.36);
+    ctx.fill();
+    ctx.strokeStyle=`rgba(0,180,255,${da*.3})`;ctx.lineWidth=1;ctx.stroke();
+    ctx.fillStyle=`rgba(180,220,255,${da*.7})`;
+    ctx.fillText(defReply,dbx,dby);
+  }
+
+  ctx.restore();
+
+  // Vignette
+  const vig=ctx.createRadialGradient(W/2,H/2,Math.min(W,H)*.35,W/2,H/2,Math.max(W,H)*.65);
+  vig.addColorStop(0,'rgba(8,14,24,0)');vig.addColorStop(.85,'rgba(8,14,24,0)');vig.addColorStop(1,'rgba(8,14,24,.35)');
+  ctx.fillStyle=vig;ctx.fillRect(0,0,W,H);
+
+  // MINIMAP
+  const ms=4,mmW=MW*ms,mmH=MH*ms;
+  const mmX=W-mmW-16,mmY=50;
+  ctx.fillStyle='rgba(0,0,0,.5)';ctx.fillRect(mmX-2,mmY-2,mmW+4,mmH+4);
+  ctx.strokeStyle='rgba(255,255,255,.06)';ctx.lineWidth=1;ctx.strokeRect(mmX-2,mmY-2,mmW+4,mmH+4);
+  for(let y=0;y<MH;y++){for(let x=0;x<MW;x++){
+    if(map[y][x]===FLOOR){ctx.fillStyle=ZONES[zoneMap[y][x]].floor;ctx.fillRect(mmX+x*ms,mmY+y*ms,ms,ms)}
+  }}
+  // minimap nodes
+  NODES.forEach(n=>{
+    ctx.fillStyle=n.resolved?'rgba(0,255,136,.8)':n.compromised?'rgba(255,34,85,.8)':'rgba(255,255,255,.15)';
+    ctx.fillRect(mmX+n.x*ms-1,mmY+n.y*ms-1,ms+2,ms+2);
+  });
+  // minimap player
+  ctx.fillStyle='#4488ff';ctx.fillRect(mmX+Math.floor(px/T)*ms-1,mmY+Math.floor(py/T)*ms-1,ms+2,ms+2);
+  // minimap attacker
+  if(atkIdx<ATK_PATH.length||atkWait>0){
+    ctx.fillStyle='#ff2255';ctx.fillRect(mmX+Math.floor(atkX/T)*ms-1,mmY+Math.floor(atkY/T)*ms-1,ms+2,ms+2);
+  }
+}
+
+function loop(ts){const dt=Math.min((ts-lastTime)/1000,.05);lastTime=ts;update(dt);render();requestAnimationFrame(loop)}
+
+// ═══ INTERACTION ═══
+function interact(){
+  if(!nearNode||qActive)return;
+  ea();sNode();
+  if(tutStep>=0&&TUT_STEPS[tutStep].trigger==='interact'){tutStep++;showTutStep()}
+  showQuestion(nearNode);
+}
+
+function autoFail(){
+  if(!qNode||qNode.resolved)return;
+  // Check if this is the boss decision
+  if(finalePhase===3){resolveBoss(2);return}
+  qNode.resolved=true;results.push(false);
+  sFail();damage=Math.min(maxDamage,damage+12);atkSpeed=Math.min(6,atkSpeed+.6);
+  document.querySelectorAll('.qp').forEach((o,i)=>{o.classList.add('dim');if(i===qNode.c)o.classList.add('correct')});
+  const fb=document.getElementById('qfb');
+  fb.className='qf fl show';fb.textContent='⏱ Час вичерпано. '+qNode.fl;
+  document.getElementById('qnext').classList.add('show');
+  const tEl=document.getElementById('qtimer');if(tEl){tEl.textContent='0s';tEl.style.color='rgba(255,34,85,.8)'}
+  updHUD();
+}
+
+function showQuestion(node){
+  qActive=true;qTimer=gameMode==='training'?999:20;qNode=node;
+  const timerHtml=gameMode==='training'?'<span style="font-size:.6rem;color:rgba(0,255,136,.4)">🎓 ТРЕНУВАННЯ</span>':'<div id="qtimer" style="font-family:\'Share Tech Mono\',monospace;font-size:1.1rem;color:rgba(255,180,0,.6);min-width:36px;text-align:right">20s</div>';
+  const m=document.getElementById('qinner');
+  m.innerHTML=`
+    <div class="qh"><span class="qi">${node.icon}</span><div style="flex:1"><div class="ql">${node.name}</div><div class="qn">${ZONES[node.zone].name}</div></div>${timerHtml}</div>
+    <div class="qa" id="qatk"></div>
+    <div class="qk" id="qask">${node.ask}</div>
+    <div class="qo" id="qopts"></div>
+    <div class="qf" id="qfb"></div>
+    <button class="qx" id="qnext">Далі →</button>
+  `;
+  const el=document.getElementById('qopts');
+  ['A','B','C','D'].forEach((mk,i)=>{
+    const d=document.createElement('div');d.className='qp';
+    d.innerHTML=`<span class="mk">${mk}</span><span>${node.opts[i]}</span>`;
+    d.onclick=()=>answerNode(node,i);el.appendChild(d);
+  });
+  document.getElementById('qnext').onclick=()=>{document.getElementById('qpanel').classList.remove('open');setTimeout(()=>{qActive=false;distTimer=Math.max(distTimer,6)},300)};
+  document.getElementById('qpanel').classList.add('open');
+  const atkEl=document.getElementById('qatk');
+  typewrite(atkEl,node.atk);
+}
+
+function typewrite(el,text){
+  return new Promise(resolve=>{let i=0;el.textContent='';if(typeTimer)clearInterval(typeTimer);
+    typeTimer=setInterval(()=>{el.textContent+=text[i];i++;if(i>=text.length){clearInterval(typeTimer);typeTimer=null;
+      document.getElementById('qask').classList.add('show');
+      document.querySelectorAll('.qp').forEach((o,j)=>{setTimeout(()=>o.classList.add('show'),j*80)});
+      resolve()}},14)});
+}
+
+function answerNode(node,ch){
+  const ok=ch===node.c;
+  node.resolved=true;
+  results.push(ok);
+  if(ok){sOk();damage=Math.max(0,damage-4);atkSpeed=Math.max(gameMode==='training'?.5:2,atkSpeed-.2);
+    defReply=DEF_OK[Math.floor(Math.random()*DEF_OK.length)];defReplyTimer=2.5;
+  }else{sFail();damage=Math.min(maxDamage,damage+12);atkSpeed=Math.min(6,atkSpeed+(gameMode==='training'?.2:.6));
+    defReply=DEF_FAIL[Math.floor(Math.random()*DEF_FAIL.length)];defReplyTimer=2.5;
+  }
+
+  document.querySelectorAll('.qp').forEach((o,i)=>{
+    o.classList.add('dim');if(i===node.c)o.classList.add('correct');if(i===ch&&!ok)o.classList.add('wrong');
+  });
+  const fb=document.getElementById('qfb');
+  fb.className=ok?'qf ok show':'qf fl show';fb.textContent=ok?node.ok:node.fl;
+  document.getElementById('qnext').classList.add('show');
+  updHUD();
+}
+
+function updHUD(){
+  const ok=results.filter(x=>x).length;
+  const modeTag=gameMode==='training'?'<span style="color:rgba(0,255,136,.4)">🎓 ТРЕНУВАННЯ</span>':'<span style="color:rgba(255,180,0,.4)">⚡ СИМУЛЯЦІЯ</span>';
+  document.getElementById('hudTL').innerHTML=`${modeTag}&nbsp;&nbsp;<span style="color:rgba(0,255,136,.6)">CONTAINED ${ok}</span>&nbsp;&nbsp;<span style="color:rgba(255,34,85,.6)">MISSED ${results.length-ok}</span>`;
+  // Current zone
+  const ptx=Math.floor(px/T),pty=Math.floor(py/T);
+  const z=zoneMap[pty]&&zoneMap[pty][ptx]?zoneMap[pty][ptx]:'corr';
+  document.getElementById('hudTR').innerHTML=`<div class="hl">${ZONES[z].name}</div><div>${results.length}/${NODES.length} nodes</div>`;
+}
+
+function showBossDecision(){
+  qActive=true;
+  const m=document.getElementById('qinner');
+  m.innerHTML=`
+    <div class="qh"><span class="qi">🚨</span><div style="flex:1"><div class="ql" style="color:rgba(255,34,85,.6)">КРИТИЧНИЙ МОМЕНТ</div><div class="qn">Фінальне рішення</div></div><div id="qtimer" style="font-family:'Share Tech Mono',monospace;font-size:1.1rem;color:rgba(255,34,85,.7);min-width:36px;text-align:right">30s</div></div>
+    <div class="qa" style="border-color:rgba(255,34,85,.1)">Зловмисник зрозумів що його відстежують. Він запускає масову ексфільтрацію через NAT Gateway — намагається вивести максимум даних перед тим як втратить доступ. У вас є секунди на рішення.</div>
+    <div class="qk show" style="color:#ff6680">Як зупинити ексфільтрацію?</div>
+    <div class="qo">
+      <div class="qp show" onclick="resolveBoss(0)"><span class="mk">A</span><span>Вимкнути NAT Gateway повністю — жоден байт не вийде назовні. Весь outbound трафік компанії зупиниться.</span></div>
+      <div class="qp show" onclick="resolveBoss(1)"><span class="mk">B</span><span>Хірургічна ізоляція — заблокувати конкретні IP і скомпрометовані ролі через Security Groups і IAM. Бізнес продовжує працювати.</span></div>
+      <div class="qp show" onclick="resolveBoss(2)"><span class="mk">C</span><span>Дозволити ексфільтрацію, але записати все для правоохоронних органів. Зберегти forensic evidence для кримінального переслідування.</span></div>
+    </div>
+    <div class="qf" id="qfb"></div>
+    <button class="qx" id="qnext">Завершити →</button>
+  `;
+  qTimer=30;qNode={resolved:false,c:1};
+  document.getElementById('qnext').onclick=()=>{
+    document.getElementById('qpanel').classList.remove('open');
+    setTimeout(()=>{qActive=false;finalePhase=4;setTimeout(showResults,1200)},300);
+  };
+  document.getElementById('qpanel').classList.add('open');
+}
+
+function resolveBoss(choice){
+  if(qNode.resolved)return;
+  qNode.resolved=true;
+  const outcomes=[
+    {dmg:-10,label:'NAT Gateway вимкнено',detail:'Ексфільтрація зупинена повністю. Але весь outbound трафік ліг — платежі, API, нотифікації клієнтів не працюють 47 хвилин. Бізнес втратив ~$180K. Зловмисник заблокований.',color:'rgba(255,170,0,.6)',emoji:'⚠️'},
+    {dmg:-15,label:'Хірургічна ізоляція успішна',detail:'Скомпрометовані ролі деактивовані, Security Groups оновлені. Ексфільтрація зупинена за 90 секунд. Бізнес продовжує працювати. Оптимальне рішення.',color:'rgba(0,255,136,.6)',emoji:'🛡️'},
+    {dmg:15,label:'Дані ексфільтровано',detail:'Зловмисник вивів 14GB PII протягом наступних 8 хвилин. Forensic evidence збережено, але GDPR штраф неминучий. Кримінальне розслідування може тривати роками.',color:'rgba(255,34,85,.6)',emoji:'💥'},
+  ];
+  const o=outcomes[choice];
+  damage=Math.max(0,Math.min(maxDamage,damage+o.dmg));
+
+  document.querySelectorAll('.qp').forEach((el,i)=>{
+    el.classList.add('dim');
+    if(i===1)el.classList.add('correct');
+    if(i===choice&&choice!==1)el.classList.add('wrong');
+  });
+
+  const fb=document.getElementById('qfb');
+  fb.className='qf show';
+  fb.style.borderColor=o.color;fb.style.color=o.color;
+  fb.innerHTML=`${o.emoji} <b>${o.label}.</b> ${o.detail}`;
+  document.getElementById('qnext').classList.add('show');
+
+  if(choice===1)sOk();else sFail();
+  results.push(choice===1);
+}
+
+function showResults(){
+  const ok=results.filter(x=>x).length;
+  const total=results.length;
+  document.getElementById('rov').classList.add('on');
+
+  let grade='',gradeColor,title;
+  if(gameMode==='training'){
+    gradeColor='rgba(0,210,255,.7)';title=ok>=10?'Відмінне розуміння IR':'Є над чим працювати';
+  }else{
+    if(damage<20&&ok>=10){grade='S';gradeColor='#00ff88';title='Elite Responder'}
+    else if(damage<35&&ok>=8){grade='A';gradeColor='#00dd66';title='Senior Analyst'}
+    else if(damage<55&&ok>=6){grade='B';gradeColor='#ffaa22';title='SOC Analyst'}
+    else if(damage<75&&ok>=4){grade='C';gradeColor='#ff8844';title='Junior Analyst'}
+    else{grade='F';gradeColor='#ff2255';title='Needs Training'}
+  }
+  const t=document.getElementById('rT');
+  t.innerHTML=grade?`<span style="font-size:5rem;line-height:1;color:${gradeColor}">${grade}</span><br><span style="font-size:1.2rem;color:${gradeColor}">${title}</span>`:`<span style="color:${gradeColor}">${title}</span>`;
+
+  let verdict=damage<30?'🛡️ Інцидент локалізовано':damage<60?'⚠️ Часткова компрометація':'💥 Масштабний breach';
+
+  const phases=[{name:'SOC · Виявлення',nodes:[0,1,2,3]},{name:'NOC · Масштаб',nodes:[4,5,6,7]},{name:'Server Room · Ізоляція',nodes:[8,9,10]}];
+  let html=`<div style="font-size:1.1rem;margin-bottom:14px;color:rgba(255,255,255,.35)">${verdict}</div>`;
+  html+=`<div style="font-family:'Share Tech Mono',monospace;font-size:.8rem;color:rgba(255,255,255,.2);letter-spacing:.12em;margin-bottom:20px">DAMAGE ${Math.round(damage)}% · CONTAINED ${ok}/${total}</div>`;
+  html+=results.map(r=>`<div class="rp ${r?'g':'r'}"></div>`).join('')+'<div style="height:24px"></div>';
+
+  phases.forEach(ph=>{
+    html+=`<div style="font-family:'Share Tech Mono',monospace;font-size:.72rem;color:rgba(0,210,255,.45);letter-spacing:.12em;margin:18px 0 8px;text-align:left">${ph.name}</div>`;
+    ph.nodes.forEach(ni=>{
+      if(ni>=NODES.length||ni>=results.length)return;
+      const n=NODES[ni],r=results[ni];
+      html+=`<div style="font-size:1rem;line-height:2;color:${r?'rgba(255,255,255,.3)':'rgba(255,34,85,.6)'};padding-left:12px;text-align:left">${r?'<span style="color:#00ff88">✓</span>':'<span style="color:#ff2255">✗</span>'} ${n.name}`;
+      if(!r) html+=` <span style="font-size:.82rem;color:rgba(255,34,85,.4)">— ${n.consequence||''}</span>`;
+      html+=`</div>`;
+    });
+  });
+  if(results.length>NODES.length){
+    html+=`<div style="font-family:'Share Tech Mono',monospace;font-size:.72rem;color:rgba(255,34,85,.45);letter-spacing:.12em;margin:18px 0 8px;text-align:left">ФІНАЛЬНЕ РІШЕННЯ</div>`;
+    html+=`<div style="font-size:1rem;line-height:2;color:${results[results.length-1]?'rgba(255,255,255,.3)':'rgba(255,34,85,.6)'};padding-left:12px;text-align:left">${results[results.length-1]?'<span style="color:#00ff88">✓</span> Хірургічна ізоляція':'<span style="color:#ff2255">✗</span> Неоптимальне рішення'}</div>`;
+  }
+  html+=`<div style="margin-top:24px;font-size:1rem;line-height:1.9;color:rgba(255,255,255,.22);text-align:left">`;
+  if(damage<30) html+='Швидка реакція обмежила масштаб. Зловмисник втратив доступ.';
+  else if(damage<60) html+='Частину даних скопійовано. Forensic-аналіз і GDPR Art. 33 (72 год).';
+  else html+='Критична компрометація. PII витекло. Негайне повідомлення регулятора і клієнтів.';
+  html+=`</div>`;
+  if(gameMode==='training') html+=`<div style="margin-top:14px;font-size:.88rem;color:rgba(0,210,255,.3);text-align:left">💡 Спробуйте "Симуляцію" для перевірки під тиском.</div>`;
+  document.getElementById('rPs').innerHTML=html;
+  document.getElementById('rD').textContent=gameMode==='training'?'Режим: Тренування':'Режим: Симуляція';
+}
+
+// ═══ DISTRACTION EVENTS ═══
+const DISTRACTIONS=[
+  {icon:'📞',from:'CISO',msg:'Що відбувається? Мені через 20 хвилин доповідь борду. Потрібен статус ЗАРАЗ.',
+   opts:['Дати короткий статус','Ігнорувати'],
+   results:[{dmg:0,speed:0,text:'Витратили 3 секунди, але CISO приймає правильні рішення на борді.'},{dmg:4,speed:.1,text:'CISO без інформації панікує і випадково повідомляє пресу.'}]},
+  {icon:'💬',from:'SLACK · #dev-general',msg:'"Чому payment-service лежить?!" — 6 розробників пишуть одночасно. Один вже намагається перезапустити ізольований сервер.',
+   opts:['Пояснити ізоляцію','Ігнорувати'],
+   results:[{dmg:0,speed:0,text:'Розробники зрозуміли. Не чіпають ізольовані системи.'},{dmg:6,speed:.15,text:'Розробник підняв ізольований сервер. Зловмисник відновив доступ.'}]},
+  {icon:'🚨',from:'SOC ALERT',msg:'Новий алерт: crypto mining на staging-01. CPU 98%. Не пов\'язано з основним інцидентом. Але хтось мусить перевірити.',
+   opts:['Делегувати колезі','Перевірити самому'],
+   results:[{dmg:1,speed:0,text:'Колега розбереться. Ви залишаєтесь на основному інциденті.'},{dmg:3,speed:.2,text:'Відволіклись на 30 секунд. Зловмисник встиг скопіювати ще дані.'}]},
+  {icon:'⚖️',from:'LEGAL',msg:'Минуло 48 годин від виявлення. GDPR Art. 33 каже: 72 години на повідомлення. Повідомляємо регулятора зараз?',
+   opts:['Так, повідомляємо','Зачекаємо ще'],
+   results:[{dmg:0,speed:0,text:'Правильно. Повідомлення вчасно зменшує ризик штрафу.'},{dmg:8,speed:0,text:'Порушення GDPR Art. 33. Ризик штрафу до 4% річного обороту.'}]},
+  {icon:'📰',from:'PR DEPARTMENT',msg:'Журналіст із TechCrunch написав: "Чутки про breach у VectorPay". PR просить коментар. Що відповідати?',
+   opts:['"Ми розслідуємо інцидент"','Без коментарів'],
+   results:[{dmg:0,speed:0,text:'Прозорість. Клієнти довіряють більше.'},{dmg:3,speed:0,text:'Мовчанка підживлює спекуляції. Акції падають на 8%.'}]},
+  {icon:'🔄',from:'DEVOPS',msg:'Scheduled deployment у production через 5 хвилин. CI/CD pipeline готовий. Код пройшов review вчора.',
+   opts:['Заморозити деплойменти','Дозволити'],
+   results:[{dmg:0,speed:0,text:'Change freeze під час інциденту — правильна практика.'},{dmg:5,speed:.1,text:'Деплоймент перезаписав логи. Частина forensic-даних втрачена.'}]},
+  {icon:'☕',from:'КОЛЕГА',msg:'Зміна закінчилась годину тому. Ви працюєте 14 годин. Колега пропонує взяти на себе розслідування.',
+   opts:['Передати і відпочити','Продовжити самому'],
+   results:[{dmg:0,speed:0,text:'Свіжа голова зробить менше помилок. Правильне рішення — передати зміну.'},{dmg:0,speed:.15,text:'Втома накопичується. Ризик помилок зростає з кожною годиною.'}]},
+];
+
+let distActive=false,distTimer=0,distCountdown=0,distIdx=-1;
+const DIST_INTERVAL_MIN=12,DIST_INTERVAL_MAX=25,DIST_TIMEOUT=10;
+let usedDistractions=new Set();
+
+function scheduleDistraction(){
+  distTimer=DIST_INTERVAL_MIN+Math.random()*(DIST_INTERVAL_MAX-DIST_INTERVAL_MIN);
+}
+
+function triggerDistraction(){
+  if(qActive||distActive||!gameRunning)return;
+  // Pick unused distraction
+  const available=DISTRACTIONS.map((_,i)=>i).filter(i=>!usedDistractions.has(i));
+  if(available.length===0)return;
+  distIdx=available[Math.floor(Math.random()*available.length)];
+  usedDistractions.add(distIdx);
+  const d=DISTRACTIONS[distIdx];
+  distActive=true;distCountdown=DIST_TIMEOUT;
+
+  const el=document.getElementById('distraction');
+  el.innerHTML=`
+    <div class="dist-header"><span class="dist-icon">${d.icon}</span><span class="dist-from">${d.from}</span></div>
+    <div class="dist-msg">${d.msg}</div>
+    <div class="dist-opts">
+      <div class="dist-opt" onclick="resolveDist(0)">${d.opts[0]}</div>
+      <div class="dist-opt" onclick="resolveDist(1)">${d.opts[1]}</div>
+    </div>
+    <div class="dist-timer" id="distCD">${DIST_TIMEOUT}s</div>
+  `;
+  el.classList.add('show');
+  tn(660,.08,'triangle',.025);setTimeout(()=>tn(880,.1,'triangle',.02),100);
+}
+
+function resolveDist(choice){
+  if(!distActive)return;
+  const d=DISTRACTIONS[distIdx];
+  const r=d.results[choice];
+  damage=Math.min(maxDamage,damage+r.dmg);
+  atkSpeed=Math.min(6,atkSpeed+r.speed);
+
+  const el=document.getElementById('distraction');
+  el.innerHTML=`
+    <div class="dist-header"><span class="dist-icon">${d.icon}</span><span class="dist-from">${d.from}</span></div>
+    <div class="dist-msg" style="color:${r.dmg<=1?'rgba(0,255,136,.5)':'rgba(255,180,0,.5)'}">${r.text}</div>
+  `;
+  if(r.dmg<=1)sOk();else sFail();
+
+  setTimeout(()=>{
+    el.classList.remove('show');
+    distActive=false;
+    scheduleDistraction();
+  },2000);
+}
+
+function updateDistraction(dt){
+  if(distActive){
+    distCountdown-=dt;
+    const cdEl=document.getElementById('distCD');
+    if(cdEl)cdEl.textContent=Math.max(0,Math.ceil(distCountdown))+'s';
+    if(distCountdown<=0) resolveDist(1);
+  }else if(!qActive&&!distActive){
+    distTimer-=dt;
+    if(distTimer<=0&&results.length>=1){
+      triggerDistraction();
+    }
+  }
+}
+
+// ═══ TUTORIAL ═══
+let tutStep=-1,tutMoved=0;
+
+const TUT_STEPS=[
+  {text:'<div style="text-align:left;line-height:2"><p>🥷 <b>Зловмисник</b> рухається автоматично. Скомпрометовані системи стають <span style="color:rgba(255,34,85,.7)">червоними</span>.</p><p>🕵️ <b>Ви</b> біжите за ним → підходите до червоного вузла → SPACE → обираєте дію.</p><p>📊 <b>Damage</b> росте поки є нерозв\'язані вузли. Правильна: <span style="color:rgba(0,255,136,.7)">−4%</span>. Неправильна: <span style="color:rgba(255,34,85,.7)">+12%</span>.</p><p>⚡ Вас будуть відволікати — CISO, Legal, розробники. 10 секунд на рішення.</p><p style="margin-top:10px">Наприкінці гри ви отримаєте рейтинг залежно від загальної шкоди:</p><p style="text-align:center;margin-top:4px"><span style="color:#00ff88">S</span> Elite — менше 20% · <span style="color:#00dd66">A</span> Senior — до 35% · <span style="color:#ffaa22">B</span> Analyst — до 55% · <span style="color:#ff8844">C</span> Junior — до 75% · <span style="color:#ff2255">F</span> — понад 75%</p></div>',hint:'Натисніть будь-яку клавішу щоб продовжити',trigger:'anykey'},
+  {text:'Це ви — <b>🕵️ incident responder</b>. Спробуйте порухатися по карті.',hint:'WASD або стрілки',trigger:'move'},
+  {text:'Бачите <b>червоний вузол</b>? Це скомпрометована система. Підійдіть до нього.',hint:'Рухайтесь до червоного вузла',trigger:'near'},
+  {text:'Ви біля вузла. Натисніть <b>SPACE</b> щоб дослідити.',hint:'Натисніть SPACE',trigger:'interact'},
+  {text:'Прочитайте ситуацію і виберіть найкращу дію.',hint:'Виберіть відповідь',trigger:'answer'},
+  {text:'Готово! Тепер ви знаєте механіку. У справжній грі <b>🥷 зловмисник рухатиметься автоматично</b> — треба встигати.',hint:'',trigger:'done'},
+];
+
+function startTutorial(){
+  ea();gameMode='training';
+  buildMap();
+  px=5*T+T/2;py=5*T+T/2;camX=px-W/2;camY=py-H/2;
+  // Freeze attacker off-screen
+  atkX=-100;atkY=-100;atkIdx=999;atkWait=0;atkSpeed=0;
+  damage=0;results=[];trail=[];
+  NODES.forEach(n=>{n.compromised=false;n.resolved=false});
+  // Pre-compromise first node only
+  NODES[0].compromised=true;
+  trail.push({x:NODES[0].x,y:NODES[0].y,t:Date.now()});
+  gameRunning=true;qActive=false;nearNode=null;
+  finalePhase=0;finaleTimer=0;
+  document.getElementById('iov').classList.add('hide');
+  tutStep=0;tutMoved=0;
+  showTutStep();
+  updHUD();lastTime=performance.now();requestAnimationFrame(loop);
+}
+
+function showTutStep(){
+  const s=TUT_STEPS[tutStep];
+  if(!s)return;
+  const overlay=document.getElementById('tutOverlay');
+  document.getElementById('tutText').innerHTML=s.text;
+  document.getElementById('tutHint').textContent=s.hint;
+  // First step (rules) = centered with dark bg. Rest = bottom, no bg blocking view
+  if(tutStep===0){
+    overlay.style.alignItems='center';
+    overlay.style.background='rgba(4,8,16,.6)';
+    overlay.style.padding='20px';
+  }else{
+    overlay.style.alignItems='flex-end';
+    overlay.style.background='none';
+    overlay.style.padding='0 20px 50px';
+  }
+  overlay.classList.add('show');
+}
+
+function checkTutProgress(){
+  if(tutStep<0)return;
+  const s=TUT_STEPS[tutStep];
+  if(!s)return;
+  if(s.trigger==='anykey'){
+    // Any key or click advances
+    if(isKey('w')||isKey('W')||isKey('s')||isKey('S')||isKey('a')||isKey('A')||isKey('d')||isKey('D')||isKey('ArrowUp')||isKey('ArrowDown')||isKey('ArrowLeft')||isKey('ArrowRight')||isKey(' ')||isKey('Enter')){
+      tutStep++;showTutStep();
+    }
+  }else if(s.trigger==='move'){
+    if(isKey('w')||isKey('W')||isKey('s')||isKey('S')||isKey('a')||isKey('A')||isKey('d')||isKey('D')||isKey('ArrowUp')||isKey('ArrowDown')||isKey('ArrowLeft')||isKey('ArrowRight')){
+      tutMoved++;
+      if(tutMoved>15){tutStep++;showTutStep()}
+    }
+  }else if(s.trigger==='near'){
+    if(nearNode){tutStep++;showTutStep()}
+  }else if(s.trigger==='interact'){
+    // waits for SPACE press → handled in interact()
+  }else if(s.trigger==='answer'){
+    if(results.length>0){
+      tutStep++;showTutStep();
+      // After answer, show final step then return to intro
+      setTimeout(()=>{
+        document.getElementById('tutOverlay').classList.remove('show');
+        gameRunning=false;tutStep=-1;
+        document.getElementById('iov').classList.remove('hide');
+        document.getElementById('rov').classList.remove('on');
+      },3000);
+    }
+  }
+}
+
+function startGame(mode){
+  gameMode=mode||'simulation';
+  ea();buildMap();
+  px=5*T+T/2;py=5*T+T/2;camX=px-W/2;camY=py-H/2;
+  atkX=NODES[ATK_PATH[0]].x*T+T/2;atkY=NODES[ATK_PATH[0]].y*T+T/2;
+  atkIdx=0;atkWait=2000;
+  applyMode();
+  damage=0;results=[];trail=[];
+  NODES.forEach(n=>{n.compromised=false;n.resolved=false});
+  gameRunning=true;qActive=false;nearNode=null;
+  finalePhase=0;finaleTimer=0;
+  document.getElementById('iov').classList.add('hide');
+  scheduleDistraction();usedDistractions.clear();distActive=false;
+  updHUD();lastTime=performance.now();requestAnimationFrame(loop);
+}
+</script>
+</body>
+</html>
