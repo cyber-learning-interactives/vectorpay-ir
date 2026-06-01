@@ -434,7 +434,7 @@ function updateAttacker(dt){
       sAlert();
       damage=Math.min(maxDamage,damage+2);
       // Taunt
-      if(atkIdx<TAUNTS.length){taunt=TAUNTS[atkIdx];tauntTimer=3.5}
+      if(atkIdx<TAUNTS.length){taunt=TAUNTS[atkIdx];tauntTimer=2.2}
     }
     // Leave trail
     trail.push({x:target.x,y:target.y,t:Date.now()});
@@ -747,7 +747,7 @@ function render(){
     ctx.fillText('🥷',atkX,atkY-2);
     // Taunt bubble
     if(tauntTimer>0&&taunt){
-      const ta=Math.min(1,tauntTimer/0.5); // fade out in last 0.5s
+      const ta=Math.min(1,tauntTimer/0.3); // fade out in last 0.5s
       ctx.font=`${T*.28}px "Chakra Petch"`;ctx.textAlign='left';ctx.textBaseline='bottom';
       const tw=ctx.measureText(taunt).width;
       const bx=atkX+PR+8,by=atkY-PR-20;
@@ -777,7 +777,7 @@ function render(){
   ctx.fillText('🕵️',px,py-2);
   // Defender reply bubble
   if(defReplyTimer>0&&defReply){
-    const da=Math.min(1,defReplyTimer/0.4);
+    const da=Math.min(1,defReplyTimer/0.3);
     ctx.font=`${T*.26}px "Chakra Petch"`;ctx.textAlign='right';ctx.textBaseline='bottom';
     const dw=ctx.measureText(defReply).width;
     const dbx=px-PR-8,dby=py-PR-18;
@@ -882,9 +882,9 @@ function answerNode(node,ch){
   results.push(ok);
   const ni=NODES.indexOf(node);
   if(ok){sOk();damage=Math.max(0,damage-6);atkSpeed=Math.max(gameMode==='training'?.5:2,atkSpeed-.2);
-    defReply=NODE_REPLIES[ni]?NODE_REPLIES[ni][0]:'Contained.';defReplyTimer=2.5;
+    defReply=NODE_REPLIES[ni]?NODE_REPLIES[ni][0]:'Contained.';defReplyTimer=1.4;
   }else{sFail();damage=Math.min(maxDamage,damage+8);atkSpeed=Math.min(6,atkSpeed+(gameMode==='training'?.2:.6));
-    defReply=NODE_REPLIES[ni]?NODE_REPLIES[ni][1]:'Пропустив...';defReplyTimer=2.5;
+    defReply=NODE_REPLIES[ni]?NODE_REPLIES[ni][1]:'Пропустив...';defReplyTimer=1.4;
   }
 
   document.querySelectorAll('.qp').forEach((o,i)=>{
