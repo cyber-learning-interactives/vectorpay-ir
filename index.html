@@ -348,21 +348,22 @@ const EXIT_X=16,EXIT_Y=26; // NAT Gateway exit point// [{x,y,alpha}]
 let taunt='',tauntTimer=0;
 let defReply='',defReplyTimer=0;
 
-const DEF_OK=[
-'Contained. Далі.',
-'Один менше. Рухаємось.',
-'Got it. Що далі?',
-'Цей вузол чистий ✓',
-'Ізольовано. Next.',
-'Зафіксовано. Йдемо далі.',
-'Є контакт. Працюємо.',
-];
-const DEF_FAIL=[
-'Чорт... треба швидше.',
-'Пропустив. Не повторюватиметься.',
-'Помилка. Зосередитись.',
-'Він випереджає...',
-'Damage росте. Тиснемо.',
+// Node-specific replies: [ok_reply, fail_reply]
+const NODE_REPLIES=[
+  // Phase 1: SOC — Detection
+  ['Алерт підтверджено. Є слід.','Алерт проігноровано... він далі працює.'],           // 0: SOC Alert
+  ['Lateral movement виявлено. Тепер бачу масштаб.','Пропустив lateral movement. Він вже далі.'], // 1: Log Correlator
+  ['Пріоритет визначено. Фокусуємось.','Не той пріоритет... він встиг ескалувати.'],     // 2: Alert Triage
+  ['Pod знайдено. Persistence розкрито.','Pod залишився. Він і далі всередині.'],         // 3: Source ID
+  // Phase 2: NOC — Scoping
+  ['Фейковий акаунт. Тепер знаю як він заходить.','Service account досі працює на нього.'], // 4: API Gateway
+  ['Запит перехоплено. Бачу що він забрав.','2.3M рядків... пізно.'],                    // 5: PostgreSQL
+  ['Старий токен — значить він тут вже тижні.','Credentials не відкликано. Він досі читає.'], // 6: Redis Cache
+  ['Staging area знайдено. Ексфільтрація не почалась.','14GB зібрано і я цього не бачив.'], // 7: Elasticsearch
+  // Phase 3: Server Room — Containment
+  ['Pod ізольовано. Network Policy працює.','Pod живий. Сканування продовжується.'],      // 8: K8s Cluster
+  ['Ролі деактивовано. Він без ключів.','Фальшиві ролі активні. kms:Decrypt у нього.'],  // 9: IAM Roles
+  ['Credentials відкликано. Bucket закрито.','480GB пішло через NAT. Запізнився.'],        // 10: S3 Buckets
 ];
 const TAUNTS=[
 'Алерт? Поки розберетесь — я вже далі 😏',
@@ -879,10 +880,11 @@ function answerNode(node,ch){
   const ok=ch===node.c;
   node.resolved=true;
   results.push(ok);
+  const ni=NODES.indexOf(node);
   if(ok){sOk();damage=Math.max(0,damage-6);atkSpeed=Math.max(gameMode==='training'?.5:2,atkSpeed-.2);
-    defReply=DEF_OK[Math.floor(Math.random()*DEF_OK.length)];defReplyTimer=2.5;
+    defReply=NODE_REPLIES[ni]?NODE_REPLIES[ni][0]:'Contained.';defReplyTimer=2.5;
   }else{sFail();damage=Math.min(maxDamage,damage+8);atkSpeed=Math.min(6,atkSpeed+(gameMode==='training'?.2:.6));
-    defReply=DEF_FAIL[Math.floor(Math.random()*DEF_FAIL.length)];defReplyTimer=2.5;
+    defReply=NODE_REPLIES[ni]?NODE_REPLIES[ni][1]:'Пропустив...';defReplyTimer=2.5;
   }
 
   document.querySelectorAll('.qp').forEach((o,i)=>{
